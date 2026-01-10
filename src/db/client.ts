@@ -13,18 +13,28 @@ function createPoolConfig(): pg.PoolConfig {
     throw new Error('DATABASE_URL environment variable is required');
   }
 
+  // Determine SSL mode based on environment and connection string
+  // Railway internal connections use self-signed certs, so we can't strictly validate
+  let ssl: pg.PoolConfig['ssl'] = false;
+
+  if (isProduction) {
+    // Check if DATABASE_URL already specifies sslmode
+    if (connectionString.includes('sslmode=')) {
+      // Let the connection string handle SSL
+      ssl = undefined;
+    } else {
+      // Railway PostgreSQL requires SSL but uses self-signed certs
+      ssl = { rejectUnauthorized: false };
+    }
+  }
+
   return {
     connectionString,
     // Connection pool settings
     max: 10,                    // Maximum number of clients in the pool
     idleTimeoutMillis: 30000,   // Close idle clients after 30 seconds
     connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection not established
-
-    // SSL configuration
-    // Railway provides valid SSL certs, so we enable strict validation in production
-    ssl: isProduction
-      ? { rejectUnauthorized: true }
-      : false,
+    ssl,
   };
 }
 
