@@ -24,6 +24,9 @@ NC='\033[0m' # No Color
 BASE_URL="${1:-http://localhost:3000}"
 AUTH_TOKEN="${2:-local-dev-token-change-in-production}"
 
+# MCP requires Accept header with both JSON and SSE
+ACCEPT_HEADER="Accept: application/json, text/event-stream"
+
 echo "============================================="
 echo "MCP Server Deployment Test"
 echo "============================================="
@@ -31,52 +34,21 @@ echo "Base URL: $BASE_URL"
 echo "============================================="
 echo ""
 
-# Helper function
-test_endpoint() {
-    local name="$1"
-    local expected_status="$2"
-    local method="$3"
-    local endpoint="$4"
-    local data="$5"
-    local auth="$6"
-
-    echo -n "Testing $name... "
-
-    if [ "$auth" = "yes" ]; then
-        AUTH_HEADER="-H \"Authorization: Bearer $AUTH_TOKEN\""
-    else
-        AUTH_HEADER=""
-    fi
-
-    if [ "$method" = "GET" ]; then
-        RESPONSE=$(curl -s -w "\n%{http_code}" $AUTH_HEADER "$BASE_URL$endpoint")
-    else
-        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $AUTH_TOKEN" \
-            -d "$data" \
-            "$BASE_URL$endpoint")
-    fi
-
-    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-    BODY=$(echo "$RESPONSE" | sed '$d')
-
-    if [ "$HTTP_CODE" = "$expected_status" ]; then
-        echo -e "${GREEN}PASS${NC} (HTTP $HTTP_CODE)"
-        return 0
-    else
-        echo -e "${RED}FAIL${NC} (Expected $expected_status, got $HTTP_CODE)"
-        echo "Response: $BODY"
-        return 1
-    fi
-}
-
 # Track failures
 FAILURES=0
 
 echo "1. Health Check"
 echo "---------------"
-test_endpoint "Health endpoint" "200" "GET" "/health" "" "no" || ((FAILURES++))
+echo -n "Testing Health endpoint... "
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/health")
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}PASS${NC} (HTTP $HTTP_CODE)"
+else
+    echo -e "${RED}FAIL${NC} (Expected 200, got $HTTP_CODE)"
+    ((FAILURES++))
+fi
 echo ""
 
 echo "2. Authentication"
@@ -84,7 +56,8 @@ echo "-----------------"
 echo -n "Testing missing auth... "
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+    -H "$ACCEPT_HEADER" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' \
     "$BASE_URL/mcp")
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 if [ "$HTTP_CODE" = "401" ]; then
@@ -97,8 +70,9 @@ fi
 echo -n "Testing invalid token... "
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer wrong-token" \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' \
     "$BASE_URL/mcp")
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 if [ "$HTTP_CODE" = "403" ]; then
@@ -112,26 +86,44 @@ echo ""
 echo "3. MCP Protocol"
 echo "---------------"
 
-# Initialize session
+# Initialize session and get session ID
 echo -n "Initializing MCP session... "
-INIT_RESPONSE=$(curl -s -X POST \
+INIT_RESPONSE=$(curl -s -i -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-script","version":"1.0.0"}}}' \
-    -D - \
     "$BASE_URL/mcp")
 
-SESSION_ID=$(echo "$INIT_RESPONSE" | grep -i "mcp-session-id" | cut -d: -f2 | tr -d ' \r')
-if [ -n "$SESSION_ID" ]; then
-    echo -e "${GREEN}PASS${NC} (Session: ${SESSION_ID:0:8}...)"
+SESSION_ID=$(echo "$INIT_RESPONSE" | grep -i "mcp-session-id:" | sed 's/.*: //' | tr -d '\r\n')
+if echo "$INIT_RESPONSE" | grep -q "protocolVersion"; then
+    if [ -n "$SESSION_ID" ]; then
+        echo -e "${GREEN}PASS${NC} (Session: ${SESSION_ID:0:8}...)"
+    else
+        echo -e "${GREEN}PASS${NC} (No session ID - stateless mode)"
+    fi
 else
-    echo -e "${YELLOW}WARN${NC} (No session ID returned, continuing...)"
+    echo -e "${RED}FAIL${NC} (No protocol version in response)"
+    echo "Response: $INIT_RESPONSE"
+    ((FAILURES++))
+fi
+
+# Send initialized notification
+if [ -n "$SESSION_ID" ]; then
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "$ACCEPT_HEADER" \
+        -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "mcp-session-id: $SESSION_ID" \
+        -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+        "$BASE_URL/mcp" > /dev/null
 fi
 
 # List tools
 echo -n "Listing tools... "
 TOOLS_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     ${SESSION_ID:+-H "mcp-session-id: $SESSION_ID"} \
     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
@@ -142,6 +134,7 @@ if echo "$TOOLS_RESPONSE" | grep -q "read_context"; then
     echo -e "${GREEN}PASS${NC} ($TOOL_COUNT tools found)"
 else
     echo -e "${RED}FAIL${NC} (Tools not found in response)"
+    echo "Response: $TOOLS_RESPONSE"
     ((FAILURES++))
 fi
 echo ""
@@ -153,12 +146,13 @@ echo "------------------"
 echo -n "Writing context... "
 WRITE_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     ${SESSION_ID:+-H "mcp-session-id: $SESSION_ID"} \
     -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"write_context","arguments":{"key":"test-deploy-key","content":"Hello from deployment test!"}}}' \
     "$BASE_URL/mcp")
 
-if echo "$WRITE_RESPONSE" | grep -q "success.*true"; then
+if echo "$WRITE_RESPONSE" | grep -qE '("success"|\\\"success\\\").*true'; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL${NC}"
@@ -170,6 +164,7 @@ fi
 echo -n "Reading context... "
 READ_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     ${SESSION_ID:+-H "mcp-session-id: $SESSION_ID"} \
     -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_context","arguments":{"key":"test-deploy-key"}}}' \
@@ -187,6 +182,7 @@ fi
 echo -n "Listing context... "
 LIST_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     ${SESSION_ID:+-H "mcp-session-id: $SESSION_ID"} \
     -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_context","arguments":{}}}' \
@@ -204,12 +200,13 @@ fi
 echo -n "Deleting context... "
 DELETE_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     ${SESSION_ID:+-H "mcp-session-id: $SESSION_ID"} \
     -d '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"delete_context","arguments":{"key":"test-deploy-key"}}}' \
     "$BASE_URL/mcp")
 
-if echo "$DELETE_RESPONSE" | grep -q "success.*true"; then
+if echo "$DELETE_RESPONSE" | grep -qE '("success"|\\\"success\\\").*true'; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL${NC}"
@@ -221,6 +218,7 @@ fi
 echo -n "Verifying deletion... "
 VERIFY_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
+    -H "$ACCEPT_HEADER" \
     -H "Authorization: Bearer $AUTH_TOKEN" \
     ${SESSION_ID:+-H "mcp-session-id: $SESSION_ID"} \
     -d '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"read_context","arguments":{"key":"test-deploy-key"}}}' \

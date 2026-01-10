@@ -30,8 +30,10 @@ describe('context_history', () => {
 
       const history = await getHistory(fixtures.validKey);
 
-      expect(history[0].changed_at.getTime()).toBeGreaterThanOrEqual(before.getTime());
-      expect(history[0].changed_at.getTime()).toBeLessThanOrEqual(after.getTime());
+      // Allow 100ms tolerance for clock differences between client and database
+      const tolerance = 100;
+      expect(history[0].changed_at.getTime()).toBeGreaterThanOrEqual(before.getTime() - tolerance);
+      expect(history[0].changed_at.getTime()).toBeLessThanOrEqual(after.getTime() + tolerance);
     });
   });
 

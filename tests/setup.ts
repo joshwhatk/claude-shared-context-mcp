@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { beforeAll, afterAll, beforeEach } from 'vitest';
 import { getPool, closePool } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrations.js';
