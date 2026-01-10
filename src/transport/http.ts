@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { server as mcpServer } from '../server.js';
@@ -36,10 +36,23 @@ export function createApp(): express.Application {
   // Health check endpoint (no auth required)
   app.get('/health', healthCheckHandler);
 
-  // MCP endpoint with auth and rate limiting
-  app.post('/mcp', validateAuth, rateLimiter, mcpPostHandler);
-  app.get('/mcp', validateAuth, mcpGetHandler);
-  app.delete('/mcp', validateAuth, mcpDeleteHandler);
+  // MCP endpoint with rate limiting
+  // Auth is handled via secret URL path: /mcp/:apiKey
+  // This works with Claude.ai which doesn't support Bearer tokens
+  app.post('/mcp', rateLimiter, mcpPostHandler);
+  app.get('/mcp', mcpGetHandler);
+  app.delete('/mcp', mcpDeleteHandler);
+
+  // Secret URL path authentication (recommended for Claude.ai)
+  // URL format: /mcp/<your-api-key>
+  app.post('/mcp/:apiKey', validateApiKeyParam, rateLimiter, mcpPostHandler);
+  app.get('/mcp/:apiKey', validateApiKeyParam, mcpGetHandler);
+  app.delete('/mcp/:apiKey', validateApiKeyParam, mcpDeleteHandler);
+
+  // Legacy Bearer token auth (for backward compatibility with curl/scripts)
+  app.post('/mcp/auth', validateAuth, rateLimiter, mcpPostHandler);
+  app.get('/mcp/auth', validateAuth, mcpGetHandler);
+  app.delete('/mcp/auth', validateAuth, mcpDeleteHandler);
 
   // Error handling middleware
   app.use(errorHandler);
@@ -191,19 +204,27 @@ async function healthCheckHandler(_req: Request, res: Response): Promise<void> {
  * CORS middleware for Claude.ai access
  */
 function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
-  // Allow requests from Claude.ai origins
+  // Allow requests from Claude.ai/Claude.com origins
   const allowedOrigins = [
     'https://claude.ai',
     'https://www.claude.ai',
+    'https://claude.com',
+    'https://www.claude.com',
   ];
 
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (origin) {
+    // For development/testing, allow any origin but log it
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    if (process.env.LOG_LEVEL === 'debug') {
+      console.log('[cors] Allowing non-Claude origin:', origin);
+    }
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Accept');
   res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
@@ -236,6 +257,71 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
       // Authorization header and body are intentionally NOT logged
     });
   });
+
+  next();
+}
+
+/**
+ * Validate API key from URL path parameter
+ * Uses timing-safe comparison to prevent timing attacks
+ */
+function validateApiKeyParam(req: Request, res: Response, next: NextFunction): void {
+  const providedKey = req.params.apiKey;
+  const expectedKey = process.env.MCP_AUTH_TOKEN;
+
+  if (!expectedKey) {
+    console.error('[auth] MCP_AUTH_TOKEN not configured');
+    res.status(500).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32603,
+        message: 'Server authentication not configured',
+      },
+      id: null,
+    });
+    return;
+  }
+
+  if (!providedKey) {
+    res.status(401).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32001,
+        message: 'API key required in URL path',
+      },
+      id: null,
+    });
+    return;
+  }
+
+  // Timing-safe comparison
+  const providedBuffer = Buffer.from(providedKey, 'utf8');
+  const expectedBuffer = Buffer.from(expectedKey, 'utf8');
+
+  let isValid = false;
+  if (providedBuffer.length === expectedBuffer.length) {
+    isValid = timingSafeEqual(providedBuffer, expectedBuffer);
+  } else {
+    // Compare against itself to maintain constant time
+    timingSafeEqual(providedBuffer, providedBuffer);
+  }
+
+  if (!isValid) {
+    console.warn('[auth] Invalid API key in URL', {
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+    });
+    res.status(403).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32002,
+        message: 'Invalid API key',
+      },
+      id: null,
+    });
+    return;
+  }
 
   next();
 }
