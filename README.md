@@ -100,7 +100,9 @@ curl -X POST https://your-app.up.railway.app/mcp \
 
 ## Claude.ai Integration
 
-### Connect as Custom Connector
+> **Detailed Guide**: See [docs/CLAUDE-AI-INTEGRATION.md](docs/CLAUDE-AI-INTEGRATION.md) for step-by-step instructions with screenshots.
+
+### Quick Setup
 
 1. Go to [claude.ai](https://claude.ai) → **Settings** → **Connectors**
 2. Click **Add custom connector**
@@ -121,6 +123,14 @@ Once connected, use natural language in Claude:
 "Show me all shared context with content"
 "Delete the context for 'project-notes'"
 ```
+
+### Cross-Conversation Persistence
+
+The main feature - context persists across conversations:
+
+1. In **Conversation A**: Save context with a key
+2. Start a **new conversation** (Conversation B)
+3. In **Conversation B**: Read the same key - data is there!
 
 ## MCP Tools Reference
 
@@ -252,6 +262,24 @@ Railway pricing (as of 2024):
   - Shared CPU
   - 1 GB PostgreSQL
 - Estimated monthly cost: **$5-10** for light usage
+
+## Documentation
+
+- [Claude.ai Integration Guide](docs/CLAUDE-AI-INTEGRATION.md) - Detailed setup and usage
+- [Operations Guide](docs/OPERATIONS.md) - Maintenance, monitoring, troubleshooting
+
+## Testing
+
+```bash
+# Run integration tests
+npm test
+
+# Test deployed server
+./scripts/test-deployment.sh https://your-app.up.railway.app YOUR_TOKEN
+
+# Generate auth token
+./scripts/generate-token.sh
+```
 
 ## License
 
