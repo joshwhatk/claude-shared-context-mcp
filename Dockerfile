@@ -3,17 +3,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files for both backend and frontend
 COPY package*.json ./
+COPY frontend/package*.json ./frontend/
 
-# Install dependencies
+# Install all dependencies (including frontend via postinstall)
 RUN npm ci
 
 # Copy source code
 COPY tsconfig.json ./
 COPY src/ ./src/
+COPY frontend/ ./frontend/
 
-# Build TypeScript
+# Build backend and frontend
 RUN npm run build
 
 # Production stage
@@ -24,11 +26,12 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --omit=dev
+# Install production dependencies only (skip postinstall for prod)
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/frontend/dist ./frontend/dist
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
