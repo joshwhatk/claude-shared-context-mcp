@@ -36,12 +36,12 @@ export function createApp(): express.Application {
   // Health check endpoint (no auth required)
   app.get('/health', healthCheckHandler);
 
-  // MCP endpoint with rate limiting
+  // MCP endpoint with rate limiting and origin verification
   // Auth is handled via secret URL path: /mcp/:apiKey
   // This works with Claude.ai which doesn't support Bearer tokens
-  app.post('/mcp', rateLimiter, mcpPostHandler);
-  app.get('/mcp', mcpGetHandler);
-  app.delete('/mcp', mcpDeleteHandler);
+  app.post('/mcp', verifyClaudeOrigin, rateLimiter, mcpPostHandler);
+  app.get('/mcp', verifyClaudeOrigin, mcpGetHandler);
+  app.delete('/mcp', verifyClaudeOrigin, mcpDeleteHandler);
 
   // Secret URL path authentication (recommended for Claude.ai)
   // URL format: /mcp/<your-api-key>
@@ -257,6 +257,52 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
       // Authorization header and body are intentionally NOT logged
     });
   });
+
+  next();
+}
+
+/**
+ * Verify request comes from Claude.ai
+ * Checks Origin header - not foolproof but adds a security layer
+ */
+function verifyClaudeOrigin(req: Request, res: Response, next: NextFunction): void {
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+
+  // Allowed Claude origins
+  const allowedOrigins = [
+    'https://claude.ai',
+    'https://www.claude.ai',
+    'https://claude.com',
+    'https://www.claude.com',
+  ];
+
+  // Check if origin or referer matches Claude
+  const isFromClaude =
+    (origin && allowedOrigins.some((allowed) => origin.startsWith(allowed))) ||
+    (referer && allowedOrigins.some((allowed) => referer.startsWith(allowed)));
+
+  // In production, require Claude origin (unless explicitly disabled)
+  const isProduction = process.env.NODE_ENV === 'production';
+  const skipOriginCheck = process.env.SKIP_ORIGIN_CHECK === 'true';
+
+  if (isProduction && !skipOriginCheck && !isFromClaude) {
+    console.warn('[auth] Request rejected - not from Claude origin', {
+      origin,
+      referer,
+      ip: req.ip,
+      path: req.path,
+    });
+    res.status(403).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32002,
+        message: 'Access denied. This endpoint only accepts requests from Claude.ai',
+      },
+      id: null,
+    });
+    return;
+  }
 
   next();
 }
