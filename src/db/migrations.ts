@@ -114,12 +114,53 @@ export async function runMigrations(): Promise<void> {
       `);
       console.log('[migrations] context_history.user_id column ready');
 
-      // Create composite index for efficient user+key lookups
+      // Create composite UNIQUE constraint for user+key (required for ON CONFLICT)
+      // First, we need to drop the old PRIMARY KEY on just `key` since it prevents
+      // multi-tenancy (different users should be able to use the same key names)
       await client.query(`
-        CREATE INDEX IF NOT EXISTS idx_shared_context_user_key
-        ON shared_context(user_id, key)
+        DO $$
+        BEGIN
+          -- Drop old primary key constraint if it exists (key-only)
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name = 'shared_context'
+            AND constraint_type = 'PRIMARY KEY'
+            AND constraint_name = 'shared_context_pkey'
+          ) THEN
+            -- Check if the PK is on just 'key' (single column)
+            IF (
+              SELECT COUNT(*) FROM information_schema.key_column_usage
+              WHERE table_name = 'shared_context'
+              AND constraint_name = 'shared_context_pkey'
+            ) = 1 THEN
+              ALTER TABLE shared_context DROP CONSTRAINT shared_context_pkey;
+              RAISE NOTICE 'Dropped old single-column primary key';
+            END IF;
+          END IF;
+        END $$
       `);
-      console.log('[migrations] shared_context user_key index ready');
+      console.log('[migrations] shared_context old PK check complete');
+
+      // Drop old non-unique index if it exists
+      await client.query(`
+        DROP INDEX IF EXISTS idx_shared_context_user_key
+      `);
+
+      // Create UNIQUE constraint on (user_id, key) - required for ON CONFLICT
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'shared_context_user_key_unique'
+          ) THEN
+            ALTER TABLE shared_context
+            ADD CONSTRAINT shared_context_user_key_unique UNIQUE (user_id, key);
+            RAISE NOTICE 'Created unique constraint on (user_id, key)';
+          END IF;
+        END $$
+      `);
+      console.log('[migrations] shared_context user_key unique constraint ready');
 
       await client.query('COMMIT');
       console.log('[migrations] All migrations completed successfully');

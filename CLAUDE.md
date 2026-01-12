@@ -114,13 +114,38 @@ Each tool follows this structure:
 
 ## Database Schema
 
-**Primary table:**
+**Users table:**
 ```sql
-shared_context (
-  key TEXT PRIMARY KEY CHECK(length(key) <= 255),
-  content TEXT NOT NULL CHECK(length(content) <= 102400),  -- 100KB
+users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  auth_provider TEXT NOT NULL DEFAULT 'manual',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+)
+```
+
+**API Keys table:**
+```sql
+api_keys (
+  key_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_used_at TIMESTAMP WITH TIME ZONE
+)
+INDEX: idx_api_keys_user_id ON user_id
+```
+
+**Primary table (multi-tenant):**
+```sql
+shared_context (
+  user_id TEXT NOT NULL,
+  key TEXT CHECK(length(key) <= 255),
+  content TEXT NOT NULL CHECK(length(content) <= 102400),  -- 100KB
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE (user_id, key)  -- Composite unique constraint for ON CONFLICT
 )
 INDEX: idx_shared_context_updated_at ON updated_at DESC
 ```
@@ -129,6 +154,7 @@ INDEX: idx_shared_context_updated_at ON updated_at DESC
 ```sql
 context_history (
   id SERIAL PRIMARY KEY,
+  user_id TEXT,
   key TEXT NOT NULL,
   content TEXT NOT NULL,
   action TEXT NOT NULL,  -- 'create', 'update', 'delete'
