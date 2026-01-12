@@ -5,6 +5,7 @@ import {
   countHistoryEntries,
   wait,
 } from '../helpers.js';
+import { TEST_USER_ID } from '../setup.js';
 import {
   setContext,
   deleteContext,
@@ -13,7 +14,7 @@ import {
 describe('context_history', () => {
   describe('create action', () => {
     it('records create action when new entry is created', async () => {
-      await setContext(fixtures.validKey, fixtures.validContent);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
 
       const history = await getHistory(fixtures.validKey);
 
@@ -25,7 +26,7 @@ describe('context_history', () => {
 
     it('records create with correct timestamp', async () => {
       const before = new Date();
-      await setContext(fixtures.validKey, fixtures.validContent);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
       const after = new Date();
 
       const history = await getHistory(fixtures.validKey);
@@ -39,9 +40,9 @@ describe('context_history', () => {
 
   describe('update action', () => {
     it('records update action when existing entry is modified', async () => {
-      await setContext(fixtures.validKey, fixtures.validContent);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
       await wait(10);
-      await setContext(fixtures.validKey, fixtures.validContent2);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent2);
 
       const history = await getHistory(fixtures.validKey);
 
@@ -54,11 +55,11 @@ describe('context_history', () => {
     });
 
     it('records multiple updates correctly', async () => {
-      await setContext(fixtures.validKey, 'Version 1');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Version 1');
       await wait(10);
-      await setContext(fixtures.validKey, 'Version 2');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Version 2');
       await wait(10);
-      await setContext(fixtures.validKey, 'Version 3');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Version 3');
 
       const history = await getHistory(fixtures.validKey);
 
@@ -74,9 +75,9 @@ describe('context_history', () => {
 
   describe('delete action', () => {
     it('records delete action when entry is deleted', async () => {
-      await setContext(fixtures.validKey, fixtures.validContent);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
       await wait(10);
-      await deleteContext(fixtures.validKey);
+      await deleteContext(TEST_USER_ID, fixtures.validKey);
 
       const history = await getHistory(fixtures.validKey);
 
@@ -87,11 +88,11 @@ describe('context_history', () => {
     });
 
     it('records content at time of deletion', async () => {
-      await setContext(fixtures.validKey, fixtures.validContent);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
       await wait(10);
-      await setContext(fixtures.validKey, fixtures.validContent2);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent2);
       await wait(10);
-      await deleteContext(fixtures.validKey);
+      await deleteContext(TEST_USER_ID, fixtures.validKey);
 
       const history = await getHistory(fixtures.validKey);
 
@@ -104,7 +105,7 @@ describe('context_history', () => {
     it('does not record delete for non-existent key', async () => {
       const initialCount = await countHistoryEntries();
 
-      await deleteContext('non-existent-key');
+      await deleteContext(TEST_USER_ID, 'non-existent-key');
 
       const finalCount = await countHistoryEntries();
       expect(finalCount).toBe(initialCount);
@@ -113,11 +114,11 @@ describe('context_history', () => {
 
   describe('history ordering', () => {
     it('returns history in reverse chronological order', async () => {
-      await setContext(fixtures.validKey, 'First');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'First');
       await wait(20);
-      await setContext(fixtures.validKey, 'Second');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Second');
       await wait(20);
-      await setContext(fixtures.validKey, 'Third');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Third');
 
       const history = await getHistory(fixtures.validKey);
 
@@ -131,15 +132,15 @@ describe('context_history', () => {
     });
 
     it('respects limit parameter', async () => {
-      await setContext(fixtures.validKey, 'V1');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'V1');
       await wait(10);
-      await setContext(fixtures.validKey, 'V2');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'V2');
       await wait(10);
-      await setContext(fixtures.validKey, 'V3');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'V3');
       await wait(10);
-      await setContext(fixtures.validKey, 'V4');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'V4');
       await wait(10);
-      await setContext(fixtures.validKey, 'V5');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'V5');
 
       const history = await getHistory(fixtures.validKey, 3);
 
@@ -153,11 +154,11 @@ describe('context_history', () => {
 
   describe('cross-key isolation', () => {
     it('maintains separate history for different keys', async () => {
-      await setContext('key-a', 'Content A1');
+      await setContext(TEST_USER_ID, 'key-a', 'Content A1');
       await wait(10);
-      await setContext('key-a', 'Content A2');
+      await setContext(TEST_USER_ID, 'key-a', 'Content A2');
       await wait(10);
-      await setContext('key-b', 'Content B1');
+      await setContext(TEST_USER_ID, 'key-b', 'Content B1');
 
       const historyA = await getHistory('key-a');
       const historyB = await getHistory('key-b');
@@ -173,7 +174,7 @@ describe('context_history', () => {
   describe('transaction integrity', () => {
     it('maintains atomic history with main data', async () => {
       // Create and immediately verify both tables are updated
-      await setContext(fixtures.validKey, fixtures.validContent);
+      await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
 
       const history = await getHistory(fixtures.validKey);
       const historyCount = await countHistoryEntries();
@@ -184,17 +185,17 @@ describe('context_history', () => {
 
     it('full lifecycle maintains history integrity', async () => {
       // Create
-      await setContext(fixtures.validKey, 'Created');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Created');
       await wait(10);
 
       // Update twice
-      await setContext(fixtures.validKey, 'Updated 1');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Updated 1');
       await wait(10);
-      await setContext(fixtures.validKey, 'Updated 2');
+      await setContext(TEST_USER_ID, fixtures.validKey, 'Updated 2');
       await wait(10);
 
       // Delete
-      await deleteContext(fixtures.validKey);
+      await deleteContext(TEST_USER_ID, fixtures.validKey);
 
       const history = await getHistory(fixtures.validKey);
 

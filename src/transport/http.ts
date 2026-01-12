@@ -1,11 +1,22 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { randomUUID, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { server as mcpServer } from '../server.js';
-import { validateAuth } from '../auth/middleware.js';
 import { testConnection } from '../db/client.js';
+import { getUserByApiKey, hashApiKey } from '../db/queries.js';
+import { setSessionContext, clearSessionContext, clearAllSessionContexts } from '../auth/session-context.js';
 import { registerAllTools } from '../tools/index.js';
+
+// Extend Express Request to include authenticated user info
+declare global {
+  namespace Express {
+    interface Request {
+      authenticatedUserId?: string;
+      apiKeyHash?: string;
+    }
+  }
+}
 
 // Constants
 const MAX_BODY_SIZE = '1mb';
@@ -36,23 +47,12 @@ export function createApp(): express.Application {
   // Health check endpoint (no auth required)
   app.get('/health', healthCheckHandler);
 
-  // MCP endpoint with rate limiting and origin verification
-  // Auth is handled via secret URL path: /mcp/:apiKey
-  // This works with Claude.ai which doesn't support Bearer tokens
-  app.post('/mcp', verifyClaudeOrigin, rateLimiter, mcpPostHandler);
-  app.get('/mcp', verifyClaudeOrigin, mcpGetHandler);
-  app.delete('/mcp', verifyClaudeOrigin, mcpDeleteHandler);
-
-  // Secret URL path authentication (recommended for Claude.ai)
+  // MCP endpoint with API key authentication in URL path
   // URL format: /mcp/<your-api-key>
+  // This is the only supported authentication method for Claude.ai
   app.post('/mcp/:apiKey', validateApiKeyParam, rateLimiter, mcpPostHandler);
   app.get('/mcp/:apiKey', validateApiKeyParam, mcpGetHandler);
   app.delete('/mcp/:apiKey', validateApiKeyParam, mcpDeleteHandler);
-
-  // Legacy Bearer token auth (for backward compatibility with curl/scripts)
-  app.post('/mcp/auth', validateAuth, rateLimiter, mcpPostHandler);
-  app.get('/mcp/auth', validateAuth, mcpGetHandler);
-  app.delete('/mcp/auth', validateAuth, mcpDeleteHandler);
 
   // Error handling middleware
   app.use(errorHandler);
@@ -68,6 +68,8 @@ const transports: Map<string, StreamableHTTPServerTransport> = new Map();
  */
 async function mcpPostHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
+  const authenticatedUserId = req.authenticatedUserId;
+  const apiKeyHash = req.apiKeyHash;
 
   try {
     let transport: StreamableHTTPServerTransport;
@@ -81,7 +83,17 @@ async function mcpPostHandler(req: Request, res: Response): Promise<void> {
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           transports.set(id, transport);
-          console.log('[transport] Session initialized:', id);
+
+          // Associate user with this session for tool handlers
+          if (authenticatedUserId && apiKeyHash) {
+            setSessionContext(id, {
+              userId: authenticatedUserId,
+              apiKeyHash: apiKeyHash,
+              authenticatedAt: new Date(),
+            });
+          }
+
+          console.log('[transport] Session initialized:', id.substring(0, 8) + '...', 'user:', authenticatedUserId);
         },
       });
 
@@ -89,7 +101,8 @@ async function mcpPostHandler(req: Request, res: Response): Promise<void> {
       transport.onclose = () => {
         if (transport.sessionId) {
           transports.delete(transport.sessionId);
-          console.log('[transport] Session closed:', transport.sessionId);
+          clearSessionContext(transport.sessionId);
+          console.log('[transport] Session closed:', transport.sessionId.substring(0, 8) + '...');
         }
       };
 
@@ -262,71 +275,15 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
- * Verify request comes from Claude.ai
- * Checks Origin header - not foolproof but adds a security layer
- */
-function verifyClaudeOrigin(req: Request, res: Response, next: NextFunction): void {
-  const origin = req.headers.origin;
-  const referer = req.headers.referer;
-
-  // Allowed Claude origins
-  const allowedOrigins = [
-    'https://claude.ai',
-    'https://www.claude.ai',
-    'https://claude.com',
-    'https://www.claude.com',
-  ];
-
-  // Check if origin or referer matches Claude
-  const isFromClaude =
-    (origin && allowedOrigins.some((allowed) => origin.startsWith(allowed))) ||
-    (referer && allowedOrigins.some((allowed) => referer.startsWith(allowed)));
-
-  // In production, require Claude origin (unless explicitly disabled)
-  const isProduction = process.env.NODE_ENV === 'production';
-  const skipOriginCheck = process.env.SKIP_ORIGIN_CHECK === 'true';
-
-  if (isProduction && !skipOriginCheck && !isFromClaude) {
-    console.warn('[auth] Request rejected - not from Claude origin', {
-      origin,
-      referer,
-      ip: req.ip,
-      path: req.path,
-    });
-    res.status(403).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32002,
-        message: 'Access denied. This endpoint only accepts requests from Claude.ai',
-      },
-      id: null,
-    });
-    return;
-  }
-
-  next();
-}
-
-/**
  * Validate API key from URL path parameter
- * Uses timing-safe comparison to prevent timing attacks
+ * Looks up the API key in the database and attaches user info to request
  */
-function validateApiKeyParam(req: Request, res: Response, next: NextFunction): void {
+async function validateApiKeyParam(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   const providedKey = req.params.apiKey;
-  const expectedKey = process.env.MCP_AUTH_TOKEN;
-
-  if (!expectedKey) {
-    console.error('[auth] MCP_AUTH_TOKEN not configured');
-    res.status(500).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32603,
-        message: 'Server authentication not configured',
-      },
-      id: null,
-    });
-    return;
-  }
 
   if (!providedKey) {
     res.status(401).json({
@@ -340,36 +297,43 @@ function validateApiKeyParam(req: Request, res: Response, next: NextFunction): v
     return;
   }
 
-  // Timing-safe comparison
-  const providedBuffer = Buffer.from(providedKey, 'utf8');
-  const expectedBuffer = Buffer.from(expectedKey, 'utf8');
+  try {
+    // Look up user by API key in database
+    const userId = await getUserByApiKey(providedKey);
 
-  let isValid = false;
-  if (providedBuffer.length === expectedBuffer.length) {
-    isValid = timingSafeEqual(providedBuffer, expectedBuffer);
-  } else {
-    // Compare against itself to maintain constant time
-    timingSafeEqual(providedBuffer, providedBuffer);
-  }
+    if (!userId) {
+      console.warn('[auth] Invalid API key in URL', {
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+      });
+      res.status(403).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32002,
+          message: 'Invalid API key',
+        },
+        id: null,
+      });
+      return;
+    }
 
-  if (!isValid) {
-    console.warn('[auth] Invalid API key in URL', {
-      path: req.path,
-      method: req.method,
-      ip: req.ip,
-    });
-    res.status(403).json({
+    // Attach user info to request for use in handlers
+    req.authenticatedUserId = userId;
+    req.apiKeyHash = hashApiKey(providedKey);
+
+    next();
+  } catch (error) {
+    console.error('[auth] Error validating API key:', error);
+    res.status(500).json({
       jsonrpc: '2.0',
       error: {
-        code: -32002,
-        message: 'Invalid API key',
+        code: -32603,
+        message: 'Authentication error',
       },
       id: null,
     });
-    return;
   }
-
-  next();
 }
 
 /**
@@ -452,4 +416,6 @@ export function cleanupSessions(): void {
       console.error(`[transport] Error closing session ${sessionId}:`, error);
     }
   }
+  // Clear all session contexts
+  clearAllSessionContexts();
 }

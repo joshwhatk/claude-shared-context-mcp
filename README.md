@@ -5,8 +5,9 @@ A Model Context Protocol (MCP) server that enables persistent, shared context ac
 ## Features
 
 - **5 MCP Tools**: read_context, write_context, delete_context, list_context, read_all_context
+- **Multi-Tenant**: Each user has isolated data with their own API key
 - **Persistent Storage**: PostgreSQL with full audit history
-- **Secure**: Bearer token authentication with timing-safe comparison
+- **Secure**: API key authentication with SHA-256 hashing
 - **Production Ready**: Rate limiting, CORS, graceful shutdown, health checks
 
 ## Quick Start
@@ -27,13 +28,17 @@ npm install
 
 # Set up environment
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your DATABASE_URL
 
 # Start PostgreSQL containers
 npm run docker:up
 
 # Run the server in development mode
 npm run dev
+
+# Create your first user and API key
+npx tsx scripts/create-user.ts myuser myemail@example.com
+# Save the API key - it's only shown once!
 
 # Run tests
 npm test
@@ -50,6 +55,13 @@ npm test
 | `npm run docker:up` | Start PostgreSQL containers |
 | `npm run docker:down` | Stop containers |
 | `npm run docker:server` | Run full stack in Docker |
+
+### Admin Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npx tsx scripts/create-user.ts <user_id> <email>` | Create a new user with API key |
+| `npx tsx scripts/migrate-to-multitenancy.ts` | Migrate existing data to multi-tenant schema |
 
 ## Railway Deployment
 
@@ -70,11 +82,10 @@ In Railway dashboard, go to your service → **Variables** and add:
 
 | Variable | Value | Required |
 |----------|-------|----------|
-| `MCP_AUTH_TOKEN` | Generate with `openssl rand -base64 32` | Yes |
 | `NODE_ENV` | `production` | Yes |
 | `LOG_LEVEL` | `info` | No |
 
-> **Important**: Generate a secure token! Run `openssl rand -base64 32` in your terminal.
+> **Note**: API keys are now stored in the database, not as environment variables.
 
 ### Step 4: Deploy
 
@@ -83,7 +94,21 @@ Railway auto-deploys on push to main branch. Or manually:
 1. Go to **Deployments** tab
 2. Click **Deploy** → **Deploy Now**
 
-### Step 5: Verify Deployment
+### Step 5: Create Initial User
+
+After deployment, create your first user via Railway shell or locally:
+
+```bash
+# Option 1: Via Railway CLI
+railway run npx tsx scripts/create-user.ts joshwhatk josh@example.com
+
+# Option 2: Run locally with production DATABASE_URL
+DATABASE_URL="your-railway-postgres-url" npx tsx scripts/create-user.ts joshwhatk josh@example.com
+```
+
+**Important**: Save the API key displayed - it's only shown once!
+
+### Step 6: Verify Deployment
 
 ```bash
 # Get your Railway URL (e.g., https://your-app.up.railway.app)
@@ -91,24 +116,23 @@ Railway auto-deploys on push to main branch. Or manually:
 # Health check
 curl https://your-app.up.railway.app/health
 
-# List tools (replace YOUR_TOKEN)
-curl -X POST https://your-app.up.railway.app/mcp \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+# Test with your API key (replace YOUR_API_KEY)
+curl -X POST "https://your-app.up.railway.app/mcp/YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}'
 ```
 
 ## Claude.ai Integration
 
-> **Detailed Guide**: See [docs/CLAUDE-AI-INTEGRATION.md](docs/CLAUDE-AI-INTEGRATION.md) for step-by-step instructions with screenshots.
+> **Detailed Guide**: See [docs/CLAUDE-AI-INTEGRATION.md](docs/CLAUDE-AI-INTEGRATION.md) for step-by-step instructions.
 
 ### Quick Setup
 
 1. Go to [claude.ai](https://claude.ai) → **Settings** → **Connectors**
 2. Click **Add custom connector**
 3. Configure:
-   - **URL**: `https://your-app.up.railway.app/mcp`
-   - **Authentication**: Add header `Authorization: Bearer YOUR_TOKEN`
+   - **URL**: `https://your-app.up.railway.app/mcp/YOUR_API_KEY`
+   - **Authentication**: None required (API key is in URL)
 4. Test connection - should show 5 tools available
 5. Save connector
 
@@ -131,6 +155,14 @@ The main feature - context persists across conversations:
 1. In **Conversation A**: Save context with a key
 2. Start a **new conversation** (Conversation B)
 3. In **Conversation B**: Read the same key - data is there!
+
+### Multi-User Support
+
+Each API key is tied to a specific user. Users can only see their own data:
+
+- User A's API key can only access User A's context
+- User B's API key can only access User B's context
+- Complete data isolation between users
 
 ## MCP Tools Reference
 
@@ -188,35 +220,61 @@ src/
 │   ├── migrations.ts     # Schema with advisory locks
 │   └── queries.ts        # Parameterized SQL queries
 ├── auth/
-│   └── middleware.ts     # Bearer token validation
+│   └── session-context.ts # Session-to-user mapping
 └── transport/
     └── http.ts           # Express HTTP/SSE transport
+
+scripts/
+├── create-user.ts        # Admin: create users with API keys
+└── migrate-to-multitenancy.ts # Data migration script
 ```
 
 ## Security
 
-- **Authentication**: Bearer token with timing-safe comparison
+- **Authentication**: API key in URL path, hashed with SHA-256 in database
+- **Multi-Tenancy**: Complete user data isolation
 - **Input Validation**: Key format, content size limits
 - **SQL Injection**: Parameterized queries throughout
 - **Rate Limiting**: 100 requests/minute per IP
 - **CORS**: Restricted to claude.ai origins
 - **SSL**: Enabled in production with certificate validation
-- **Audit Trail**: All changes recorded in context_history table
+- **Audit Trail**: All changes recorded in context_history table with user_id
 
 ## Database Schema
 
 ```sql
--- Main storage
-shared_context (
-  key TEXT PRIMARY KEY,
-  content TEXT NOT NULL,
+-- Users (Firebase-ready)
+users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  auth_provider TEXT NOT NULL DEFAULT 'manual',
   created_at TIMESTAMP WITH TIME ZONE,
   updated_at TIMESTAMP WITH TIME ZONE
 )
 
--- Audit history
+-- API Keys (hashed storage)
+api_keys (
+  key_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE,
+  last_used_at TIMESTAMP WITH TIME ZONE
+)
+
+-- Main storage (multi-tenant)
+shared_context (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  key TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE,
+  PRIMARY KEY (user_id, key)
+)
+
+-- Audit history (multi-tenant)
 context_history (
   id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
   key TEXT NOT NULL,
   content TEXT NOT NULL,
   action TEXT NOT NULL,  -- 'create', 'update', 'delete'
@@ -229,11 +287,12 @@ context_history (
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | - | PostgreSQL connection string |
-| `MCP_AUTH_TOKEN` | Yes | - | Bearer token for authentication |
 | `PORT` | No | 3000 | Server port |
 | `NODE_ENV` | No | development | Environment mode |
 | `LOG_LEVEL` | No | info | Logging level (info/debug) |
 | `TEST_DATABASE_URL` | No | - | Test database for running tests |
+
+> **Note**: `MCP_AUTH_TOKEN` is no longer used. API keys are stored in the database.
 
 ## Troubleshooting
 
@@ -241,18 +300,24 @@ context_history (
 - Verify DATABASE_URL is correct
 - Check PostgreSQL is running: `npm run docker:up`
 
-### Authentication Failed
-- Ensure `Authorization: Bearer <token>` header is set
-- Token must match `MCP_AUTH_TOKEN` exactly
+### Authentication Failed (Invalid API key)
+- Ensure you're using the correct API key in the URL path
+- Verify the API key exists in the database
+- Check the key hasn't been deleted
 
 ### Tools Not Showing in Claude
 - Verify health endpoint returns 200
 - Check Railway logs for startup errors
 - Ensure MCP endpoint returns valid JSON-RPC response
+- Verify URL format: `/mcp/YOUR_API_KEY` (not just `/mcp`)
 
 ### Rate Limited
 - Wait 1 minute for rate limit reset
 - Rate limit: 100 requests/minute per IP
+
+### "Not authenticated" errors
+- The API key may be invalid or expired
+- Create a new user/key: `npx tsx scripts/create-user.ts`
 
 ## Cost Estimate
 
@@ -274,11 +339,10 @@ Railway pricing (as of 2024):
 # Run integration tests
 npm test
 
-# Test deployed server
-./scripts/test-deployment.sh https://your-app.up.railway.app YOUR_TOKEN
-
-# Generate auth token
-./scripts/generate-token.sh
+# Test deployed server (replace with your URL and API key)
+curl -X POST "https://your-app.up.railway.app/mcp/YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 ## License

@@ -7,7 +7,7 @@ This guide walks you through connecting your MCP Shared Context Server to Claude
 Before starting, ensure you have:
 
 1. **Deployed server** running on Railway (or another public URL)
-2. **Auth token** (`MCP_AUTH_TOKEN`) configured in your deployment
+2. **API key** created via `npx tsx scripts/create-user.ts`
 3. **Health check passing**: `curl https://your-app.up.railway.app/health`
 
 ## Step 1: Access Claude.ai Connectors
@@ -28,19 +28,16 @@ Before starting, ensure you have:
 | Field | Value |
 |-------|-------|
 | Name | `Shared Context` (or any name you prefer) |
-| URL | `https://your-app.up.railway.app/mcp` |
+| URL | `https://your-app.up.railway.app/mcp/YOUR_API_KEY` |
 | Transport | HTTP/SSE (Streamable HTTP) |
 
-## Step 3: Configure Authentication
+> **Important**: The API key goes in the URL path, not in a header!
 
-Add the Authorization header:
+## Step 3: Authentication
 
-1. Find the **Headers** or **Authentication** section
-2. Add a custom header:
-   - **Header Name**: `Authorization`
-   - **Header Value**: `Bearer YOUR_MCP_AUTH_TOKEN`
+**No additional authentication headers are needed.** The API key in the URL path handles authentication.
 
-> **Important**: Replace `YOUR_MCP_AUTH_TOKEN` with your actual token from Railway environment variables.
+If Claude.ai shows OAuth or header configuration fields, you can leave them empty - authentication is handled via the URL.
 
 ## Step 4: Test Connection
 
@@ -55,8 +52,8 @@ Add the Authorization header:
      - `read_all_context`
 
 If the test fails, check:
-- URL is correct and accessible
-- Token matches exactly (no extra spaces)
+- URL includes your API key after `/mcp/`
+- API key is valid (created via admin script)
 - Server health check passes
 
 ## Step 5: Save and Enable
@@ -189,19 +186,38 @@ This is the main feature - context persists across conversations:
 
 4. **Verify**: You should see "This should survive across conversations!"
 
+## Multi-User Data Isolation
+
+The server supports multiple users, each with their own isolated data:
+
+- **Each API key** is tied to a specific user
+- **Data isolation**: You can only access context entries created with your API key
+- **No cross-user access**: User A cannot see User B's data, even if they know the keys
+
+This means:
+- Different team members can each have their own shared context
+- Each person uses their own API key in their Claude.ai connector
+- Complete privacy between users
+
 ## Troubleshooting
 
 ### "Tool not found" or "No tools available"
 
 - Verify the connector is enabled
-- Check the URL ends with `/mcp`
+- Check the URL includes `/mcp/YOUR_API_KEY`
 - Test the health endpoint: `curl https://your-app.up.railway.app/health`
 
-### "Authentication failed"
+### "Invalid API key" or "Authentication failed"
 
-- Verify the token matches exactly
-- Check for extra spaces or newlines in the token
-- Ensure the header is `Authorization: Bearer <token>` (with space after Bearer)
+- Verify your API key is correct (it was shown only once when created)
+- The API key must be in the URL path: `/mcp/YOUR_API_KEY`
+- If you lost your key, create a new user: `npx tsx scripts/create-user.ts`
+
+### "Not authenticated"
+
+- The API key in the URL may be invalid
+- Create a new API key using the admin script
+- Check Railway logs for authentication errors
 
 ### "Connection timeout"
 
@@ -220,17 +236,24 @@ This is the main feature - context persists across conversations:
 - Verify `DATABASE_URL` is set in Railway
 - Check Railway logs for database errors
 
+### Can't see data from another conversation
+
+- Make sure you're using the same API key in both conversations
+- Each API key has its own isolated data store
+- Check that the write operation succeeded (look for confirmation)
+
 ## Viewing Audit History
 
 To see all changes made to your shared context:
 
 1. Connect to your Railway PostgreSQL database
-2. Run this query:
+2. Run this query (replace `your_user_id` with your actual user ID):
 
 ```sql
 SELECT key, action, changed_at,
        LEFT(content, 50) as content_preview
 FROM context_history
+WHERE user_id = 'your_user_id'
 ORDER BY changed_at DESC
 LIMIT 20;
 ```
@@ -248,7 +271,7 @@ This shows:
 Use descriptive, hierarchical keys:
 - `project.frontend.notes`
 - `meeting.2024-01-10.summary`
-- `config.api-keys` (but don't store actual secrets!)
+- `config.preferences` (but don't store actual secrets!)
 
 ### Content Organization
 
@@ -274,6 +297,7 @@ Then delete entries you no longer need.
 ## Security Notes
 
 - **Don't store secrets**: API keys, passwords, tokens should not go in shared context
-- **Token security**: Keep your `MCP_AUTH_TOKEN` secret
+- **API key security**: Keep your API key secret - anyone with it can access your data
 - **Content limits**: Max 100KB per entry, max 255 char keys
-- **Audit trail**: All changes are logged in `context_history`
+- **Audit trail**: All changes are logged in `context_history` with your user ID
+- **Data isolation**: Your data is completely isolated from other users

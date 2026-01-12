@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import { server } from '../server.js';
 import { getContext } from '../db/queries.js';
+import { getUserIdFromSession } from '../auth/session-context.js';
 import { validateKey } from './validators.js';
 import { ToolError, ErrorCode, formatSuccess, formatError, createToolResponse } from './errors.js';
+
+// Minimal type for the extra parameter passed to tool handlers
+interface ToolHandlerExtra {
+  sessionId?: string;
+}
 
 // Input schema for read_context tool
 export const readContextInputSchema = {
@@ -28,7 +34,16 @@ export function registerReadContextTool(): void {
       description: 'Read a single context entry by its key',
       inputSchema: readContextInputSchema,
     },
-    async ({ key }) => {
+    async ({ key }, extra: ToolHandlerExtra) => {
+      // Get user ID from session context
+      const userId = getUserIdFromSession(extra.sessionId);
+      if (!userId) {
+        const response = formatError(
+          new ToolError(ErrorCode.UNAUTHORIZED, 'Not authenticated')
+        );
+        return createToolResponse(response);
+      }
+
       // Validate key
       const keyValidation = validateKey(key);
       if (!keyValidation.valid) {
@@ -37,8 +52,8 @@ export function registerReadContextTool(): void {
       }
 
       try {
-        // Fetch from database
-        const entry = await getContext(key);
+        // Fetch from database (filtered by user)
+        const entry = await getContext(userId, key);
 
         if (!entry) {
           const response = formatError(

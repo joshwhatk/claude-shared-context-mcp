@@ -9,6 +9,7 @@ import {
   listKeys,
   getAllEntries,
 } from '../helpers.js';
+import { TEST_USER_ID } from '../setup.js';
 import {
   getContext,
   setContext,
@@ -20,7 +21,7 @@ import { validateKey, validateContent } from '../../src/tools/validators.js';
 
 describe('write_context', () => {
   it('creates a new entry and returns success', async () => {
-    const entry = await setContext(fixtures.validKey, fixtures.validContent);
+    const entry = await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
 
     expect(entry).toBeDefined();
     expect(entry.key).toBe(fixtures.validKey);
@@ -31,13 +32,13 @@ describe('write_context', () => {
 
   it('updates existing entry and updates timestamp', async () => {
     // Create initial entry
-    const initial = await setContext(fixtures.validKey, fixtures.validContent);
+    const initial = await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent);
 
     // Wait to ensure different timestamp
     await wait(50);
 
     // Update the entry
-    const updated = await setContext(fixtures.validKey, fixtures.validContent2);
+    const updated = await setContext(TEST_USER_ID, fixtures.validKey, fixtures.validContent2);
 
     expect(updated.key).toBe(fixtures.validKey);
     expect(updated.content).toBe(fixtures.validContent2);
@@ -82,8 +83,8 @@ describe('write_context', () => {
   });
 
   it('stores and retrieves large content correctly', async () => {
-    await setContext(fixtures.validKey, fixtures.largeContent);
-    const retrieved = await getContext(fixtures.validKey);
+    await setContext(TEST_USER_ID, fixtures.validKey, fixtures.largeContent);
+    const retrieved = await getContext(TEST_USER_ID, fixtures.validKey);
 
     expect(retrieved).toBeDefined();
     expect(retrieved!.content).toBe(fixtures.largeContent);
@@ -95,7 +96,7 @@ describe('read_context', () => {
   it('retrieves existing entry', async () => {
     await createContextEntry(fixtures.validKey, fixtures.validContent);
 
-    const entry = await getContext(fixtures.validKey);
+    const entry = await getContext(TEST_USER_ID, fixtures.validKey);
 
     expect(entry).toBeDefined();
     expect(entry!.key).toBe(fixtures.validKey);
@@ -103,7 +104,7 @@ describe('read_context', () => {
   });
 
   it('returns null for missing key', async () => {
-    const entry = await getContext('non-existent-key');
+    const entry = await getContext(TEST_USER_ID, 'non-existent-key');
     expect(entry).toBeNull();
   });
 
@@ -111,8 +112,8 @@ describe('read_context', () => {
     await createContextEntry(fixtures.validKey, fixtures.validContent);
     await createContextEntry(fixtures.validKey2, fixtures.validContent2);
 
-    const entry1 = await getContext(fixtures.validKey);
-    const entry2 = await getContext(fixtures.validKey2);
+    const entry1 = await getContext(TEST_USER_ID, fixtures.validKey);
+    const entry2 = await getContext(TEST_USER_ID, fixtures.validKey2);
 
     expect(entry1!.content).toBe(fixtures.validContent);
     expect(entry2!.content).toBe(fixtures.validContent2);
@@ -123,16 +124,16 @@ describe('delete_context', () => {
   it('removes entry successfully and returns true', async () => {
     await createContextEntry(fixtures.validKey, fixtures.validContent);
 
-    const deleted = await deleteContext(fixtures.validKey);
+    const deleted = await deleteContext(TEST_USER_ID, fixtures.validKey);
 
     expect(deleted).toBe(true);
 
-    const entry = await getContext(fixtures.validKey);
+    const entry = await getContext(TEST_USER_ID, fixtures.validKey);
     expect(entry).toBeNull();
   });
 
   it('returns false for missing key', async () => {
-    const deleted = await deleteContext('non-existent-key');
+    const deleted = await deleteContext(TEST_USER_ID, 'non-existent-key');
     expect(deleted).toBe(false);
   });
 
@@ -140,10 +141,10 @@ describe('delete_context', () => {
     await createContextEntry(fixtures.validKey, fixtures.validContent);
     await createContextEntry(fixtures.validKey2, fixtures.validContent2);
 
-    await deleteContext(fixtures.validKey);
+    await deleteContext(TEST_USER_ID, fixtures.validKey);
 
-    const entry1 = await getContext(fixtures.validKey);
-    const entry2 = await getContext(fixtures.validKey2);
+    const entry1 = await getContext(TEST_USER_ID, fixtures.validKey);
+    const entry2 = await getContext(TEST_USER_ID, fixtures.validKey2);
 
     expect(entry1).toBeNull();
     expect(entry2).toBeDefined();
@@ -159,7 +160,7 @@ describe('list_context', () => {
     await wait(20);
     await createContextEntry('entry-3', 'Content 3');
 
-    const entries = await listContextKeys();
+    const entries = await listContextKeys(TEST_USER_ID);
 
     expect(entries.length).toBe(3);
     // Most recent first
@@ -171,7 +172,7 @@ describe('list_context', () => {
   it('respects limit parameter', async () => {
     await createMultipleEntries(10);
 
-    const entries = await listContextKeys(5);
+    const entries = await listContextKeys(TEST_USER_ID, 5);
 
     expect(entries.length).toBe(5);
   });
@@ -179,7 +180,7 @@ describe('list_context', () => {
   it('uses default limit when not specified', async () => {
     await createMultipleEntries(5);
 
-    const entries = await listContextKeys();
+    const entries = await listContextKeys(TEST_USER_ID);
 
     expect(entries.length).toBe(5);
   });
@@ -188,7 +189,7 @@ describe('list_context', () => {
     await createMultipleEntries(5);
 
     // Request more than max (200)
-    const entries = await listContextKeys(300);
+    const entries = await listContextKeys(TEST_USER_ID, 300);
 
     // Should return all 5, capped at 200 if more existed
     expect(entries.length).toBe(5);
@@ -199,7 +200,7 @@ describe('list_context', () => {
     await createContextEntry('user-profile', 'Profile');
     await createContextEntry('app-config', 'Config');
 
-    const entries = await listContextKeys(50, 'user');
+    const entries = await listContextKeys(TEST_USER_ID, 50, 'user');
 
     expect(entries.length).toBe(2);
     expect(entries.map((e) => e.key)).toContain('user-settings');
@@ -209,7 +210,7 @@ describe('list_context', () => {
   it('returns empty array when no matches found', async () => {
     await createContextEntry('test-key', 'Content');
 
-    const entries = await listContextKeys(50, 'nonexistent');
+    const entries = await listContextKeys(TEST_USER_ID, 50, 'nonexistent');
 
     expect(entries.length).toBe(0);
   });
@@ -220,7 +221,7 @@ describe('list_context', () => {
     await createContextEntry('testXkey', 'Content 3');
 
     // Search for literal underscore - should only match test_key
-    const entries = await listContextKeys(50, 'test_');
+    const entries = await listContextKeys(TEST_USER_ID, 50, 'test_');
 
     expect(entries.length).toBe(1);
     expect(entries[0].key).toBe('test_key');
@@ -232,7 +233,7 @@ describe('read_all_context', () => {
     await createContextEntry(fixtures.validKey, fixtures.validContent);
     await createContextEntry(fixtures.validKey2, fixtures.validContent2);
 
-    const entries = await getAllContext();
+    const entries = await getAllContext(TEST_USER_ID);
 
     expect(entries.length).toBe(2);
     expect(entries.every((e) => e.content !== undefined)).toBe(true);
@@ -241,7 +242,7 @@ describe('read_all_context', () => {
   it('respects limit parameter', async () => {
     await createMultipleEntries(10);
 
-    const entries = await getAllContext(3);
+    const entries = await getAllContext(TEST_USER_ID, 3);
 
     expect(entries.length).toBe(3);
   });
@@ -250,7 +251,7 @@ describe('read_all_context', () => {
     // We can't easily create 60 entries in a test, but we can verify the logic
     await createMultipleEntries(5);
 
-    const entries = await getAllContext(100);
+    const entries = await getAllContext(TEST_USER_ID, 100);
 
     // Should cap at 50, but we only have 5
     expect(entries.length).toBe(5);
@@ -261,14 +262,14 @@ describe('read_all_context', () => {
     await wait(20);
     await createContextEntry('new', 'New content');
 
-    const entries = await getAllContext();
+    const entries = await getAllContext(TEST_USER_ID);
 
     expect(entries[0].key).toBe('new');
     expect(entries[1].key).toBe('old');
   });
 
   it('returns empty array when no entries exist', async () => {
-    const entries = await getAllContext();
+    const entries = await getAllContext(TEST_USER_ID);
     expect(entries.length).toBe(0);
   });
 });

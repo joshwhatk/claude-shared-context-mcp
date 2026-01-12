@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import { server } from '../server.js';
 import { listContextKeys } from '../db/queries.js';
+import { getUserIdFromSession } from '../auth/session-context.js';
 import { validateLimit } from './validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from './errors.js';
+
+// Minimal type for the extra parameter passed to tool handlers
+interface ToolHandlerExtra {
+  sessionId?: string;
+}
 
 // Constants for list limits
 const DEFAULT_LIMIT = 50;
@@ -36,13 +42,22 @@ export function registerListContextTool(): void {
       description: 'List all context keys with metadata, optionally filtered by search pattern',
       inputSchema: listContextInputSchema,
     },
-    async ({ limit, search }) => {
+    async ({ limit, search }, extra: ToolHandlerExtra) => {
+      // Get user ID from session context
+      const userId = getUserIdFromSession(extra.sessionId);
+      if (!userId) {
+        const response = formatError(
+          new ToolError(ErrorCode.UNAUTHORIZED, 'Not authenticated')
+        );
+        return createToolResponse(response);
+      }
+
       try {
         // Validate and normalize limit
         const safeLimit = validateLimit(limit ?? DEFAULT_LIMIT, MAX_LIMIT, DEFAULT_LIMIT);
 
-        // Fetch keys from database
-        const entries = await listContextKeys(safeLimit, search);
+        // Fetch keys from database (filtered by user)
+        const entries = await listContextKeys(userId, safeLimit, search);
 
         const data: ListContextOutput = {
           entries: entries.map((entry) => ({

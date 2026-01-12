@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import { server } from '../server.js';
 import { getAllContext } from '../db/queries.js';
+import { getUserIdFromSession } from '../auth/session-context.js';
 import { validateLimit } from './validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from './errors.js';
+
+// Minimal type for the extra parameter passed to tool handlers
+interface ToolHandlerExtra {
+  sessionId?: string;
+}
 
 // Constants for read_all limits (lower than list since we return content)
 const DEFAULT_LIMIT = 20;
@@ -36,13 +42,22 @@ export function registerReadAllContextTool(): void {
       description: 'Read all context entries with their content, ordered by most recently updated',
       inputSchema: readAllContextInputSchema,
     },
-    async ({ limit }) => {
+    async ({ limit }, extra: ToolHandlerExtra) => {
+      // Get user ID from session context
+      const userId = getUserIdFromSession(extra.sessionId);
+      if (!userId) {
+        const response = formatError(
+          new ToolError(ErrorCode.UNAUTHORIZED, 'Not authenticated')
+        );
+        return createToolResponse(response);
+      }
+
       try {
         // Validate and normalize limit
         const safeLimit = validateLimit(limit ?? DEFAULT_LIMIT, MAX_LIMIT, DEFAULT_LIMIT);
 
-        // Fetch all entries from database
-        const entries = await getAllContext(safeLimit);
+        // Fetch all entries from database (filtered by user)
+        const entries = await getAllContext(userId, safeLimit);
 
         const data: ReadAllContextOutput = {
           entries: entries.map((entry) => ({

@@ -52,6 +52,75 @@ export async function runMigrations(): Promise<void> {
       `);
       console.log('[migrations] context_history table ready');
 
+      // ============================================
+      // Multi-tenancy migrations (added for user isolation)
+      // ============================================
+
+      // Create users table (Firebase-ready)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          auth_provider TEXT NOT NULL DEFAULT 'manual',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `);
+      console.log('[migrations] users table ready');
+
+      // Create api_keys table (stores hashed keys)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS api_keys (
+          key_hash TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          last_used_at TIMESTAMP WITH TIME ZONE
+        )
+      `);
+      console.log('[migrations] api_keys table ready');
+
+      // Create index on api_keys.user_id
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)
+      `);
+      console.log('[migrations] api_keys index ready');
+
+      // Add user_id column to shared_context (nullable initially for migration)
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'shared_context' AND column_name = 'user_id'
+          ) THEN
+            ALTER TABLE shared_context ADD COLUMN user_id TEXT;
+          END IF;
+        END $$
+      `);
+      console.log('[migrations] shared_context.user_id column ready');
+
+      // Add user_id column to context_history (nullable initially for migration)
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'context_history' AND column_name = 'user_id'
+          ) THEN
+            ALTER TABLE context_history ADD COLUMN user_id TEXT;
+          END IF;
+        END $$
+      `);
+      console.log('[migrations] context_history.user_id column ready');
+
+      // Create composite index for efficient user+key lookups
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_shared_context_user_key
+        ON shared_context(user_id, key)
+      `);
+      console.log('[migrations] shared_context user_key index ready');
+
       await client.query('COMMIT');
       console.log('[migrations] All migrations completed successfully');
     } catch (err) {

@@ -10,6 +10,7 @@ import {
   type ContextKeyInfo,
   type ContextHistoryEntry,
 } from '../src/db/queries.js';
+import { TEST_USER_ID } from './setup.js';
 
 /**
  * Test fixtures for common test data
@@ -43,7 +44,7 @@ export async function queryDatabase<T>(
  * Helper to get raw context entry from database
  */
 export async function getRawContextEntry(key: string): Promise<ContextEntry | null> {
-  return getContext(key);
+  return getContext(TEST_USER_ID, key);
 }
 
 /**
@@ -53,14 +54,14 @@ export async function createContextEntry(
   key: string,
   content: string
 ): Promise<ContextEntry> {
-  return setContext(key, content);
+  return setContext(TEST_USER_ID, key, content);
 }
 
 /**
  * Helper to delete a context entry directly
  */
 export async function deleteContextEntry(key: string): Promise<boolean> {
-  return deleteContext(key);
+  return deleteContext(TEST_USER_ID, key);
 }
 
 /**
@@ -70,14 +71,14 @@ export async function listKeys(
   limit?: number,
   search?: string
 ): Promise<ContextKeyInfo[]> {
-  return listContextKeys(limit, search);
+  return listContextKeys(TEST_USER_ID, limit, search);
 }
 
 /**
  * Helper to get all context entries directly
  */
 export async function getAllEntries(limit?: number): Promise<ContextEntry[]> {
-  return getAllContext(limit);
+  return getAllContext(TEST_USER_ID, limit);
 }
 
 /**
@@ -87,7 +88,7 @@ export async function getHistory(
   key: string,
   limit?: number
 ): Promise<ContextHistoryEntry[]> {
-  return getContextHistory(key, limit);
+  return getContextHistory(TEST_USER_ID, key, limit);
 }
 
 /**
@@ -95,7 +96,8 @@ export async function getHistory(
  */
 export async function countContextEntries(): Promise<number> {
   const result = await queryDatabase<{ count: string }>(
-    'SELECT COUNT(*) as count FROM shared_context'
+    'SELECT COUNT(*) as count FROM shared_context WHERE user_id = $1',
+    [TEST_USER_ID]
   );
   return parseInt(result[0].count, 10);
 }
@@ -105,7 +107,8 @@ export async function countContextEntries(): Promise<number> {
  */
 export async function countHistoryEntries(): Promise<number> {
   const result = await queryDatabase<{ count: string }>(
-    'SELECT COUNT(*) as count FROM context_history'
+    'SELECT COUNT(*) as count FROM context_history WHERE user_id = $1',
+    [TEST_USER_ID]
   );
   return parseInt(result[0].count, 10);
 }
