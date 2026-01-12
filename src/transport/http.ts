@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { server as mcpServer } from '../server.js';
@@ -7,6 +9,11 @@ import { testConnection } from '../db/client.js';
 import { getUserByApiKey, hashApiKey } from '../db/queries.js';
 import { setSessionContext, clearSessionContext, clearAllSessionContexts } from '../auth/session-context.js';
 import { registerAllTools } from '../tools/index.js';
+import apiRouter from '../api/index.js';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Extend Express Request to include authenticated user info
 declare global {
@@ -44,6 +51,9 @@ export function createApp(): express.Application {
   // CORS configuration for Claude.ai
   app.use(corsMiddleware);
 
+  // REST API routes (before static files, after CORS)
+  app.use('/api', apiRouter);
+
   // Health check endpoint (no auth required)
   app.get('/health', healthCheckHandler);
 
@@ -53,6 +63,24 @@ export function createApp(): express.Application {
   app.post('/mcp/:apiKey', validateApiKeyParam, rateLimiter, mcpPostHandler);
   app.get('/mcp/:apiKey', validateApiKeyParam, mcpGetHandler);
   app.delete('/mcp/:apiKey', validateApiKeyParam, mcpDeleteHandler);
+
+  // Serve frontend static files in production
+  if (process.env.NODE_ENV === 'production') {
+    const frontendDist = path.join(__dirname, '../../frontend/dist');
+    app.use(express.static(frontendDist, {
+      maxAge: '1d',
+      etag: true,
+    }));
+
+    // SPA fallback - serve index.html for all non-API routes
+    app.get('*', (req: Request, res: Response, next: NextFunction) => {
+      // Skip API, MCP, and health routes
+      if (req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path === '/health') {
+        return next();
+      }
+      res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+  }
 
   // Error handling middleware
   app.use(errorHandler);
