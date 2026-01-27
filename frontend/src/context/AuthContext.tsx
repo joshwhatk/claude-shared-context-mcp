@@ -17,6 +17,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: AuthVerifyResponse | null;
+  isAdmin: boolean;
   error: string | null;
 }
 
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: false,
     isLoading: true,
     user: null,
+    isAdmin: false,
     error: null,
   });
 
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           isAuthenticated: false,
           isLoading: false,
           user: null,
+          isAdmin: false,
           error: null,
         });
         return;
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           isAuthenticated: true,
           isLoading: false,
           user,
+          isAdmin: user.isAdmin ?? false,
           error: null,
         });
       } catch {
@@ -68,6 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           isAuthenticated: false,
           isLoading: false,
           user: null,
+          isAdmin: false,
           error: null,
         });
       }
@@ -87,6 +92,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isAuthenticated: true,
         isLoading: false,
         user,
+        isAdmin: user.isAdmin ?? false,
         error: null,
       });
 
@@ -98,6 +104,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isAuthenticated: false,
         isLoading: false,
         user: null,
+        isAdmin: false,
         error: err instanceof Error ? err.message : 'Authentication failed',
       });
 
@@ -111,6 +118,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isAuthenticated: false,
       isLoading: false,
       user: null,
+      isAdmin: false,
       error: null,
     });
   }, []);

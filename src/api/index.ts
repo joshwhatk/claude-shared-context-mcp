@@ -5,6 +5,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { getUserByApiKey, hashApiKey, getUserById } from '../db/queries.js';
 import contextRouter from './context.js';
+import adminRouter from './admin.js';
 
 const router = Router();
 
@@ -161,5 +162,8 @@ router.post('/auth/verify', rateLimiter, async (req: Request, res: Response): Pr
 
 // Apply auth and rate limiting to all /api/context routes
 router.use('/context', rateLimiter, authMiddleware, contextRouter);
+
+// Apply auth and rate limiting to all /api/admin routes
+router.use('/admin', rateLimiter, authMiddleware, adminRouter);
 
 export default router;

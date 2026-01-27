@@ -31,7 +31,54 @@ export interface AllContextResponse {
 export interface AuthVerifyResponse {
   userId: string;
   email: string | null;
+  isAdmin: boolean;
   authenticated: boolean;
+}
+
+// Admin types
+export interface AdminUser {
+  id: string;
+  email: string;
+  is_admin: boolean;
+  auth_provider: string;
+  created_at: string;
+  updated_at: string;
+  api_key_count: number;
+  context_entry_count: number;
+}
+
+export interface AdminApiKey {
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface AdminListUsersResponse {
+  users: AdminUser[];
+  count: number;
+}
+
+export interface AdminCreateUserResponse {
+  user: {
+    id: string;
+    email: string;
+    is_admin: boolean;
+    created_at: string;
+  };
+  apiKey: string;
+  keyName: string;
+}
+
+export interface AdminListKeysResponse {
+  userId: string;
+  keys: AdminApiKey[];
+  count: number;
+}
+
+export interface AdminCreateKeyResponse {
+  userId: string;
+  apiKey: string;
+  keyName: string;
 }
 
 export interface SaveResponse extends ContextEntry {
@@ -189,6 +236,76 @@ class ApiClient {
   async deleteContext(key: string): Promise<{ key: string; deleted: boolean }> {
     return this.fetch<{ key: string; deleted: boolean }>(
       `/context/${encodeURIComponent(key)}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ============================================
+  // Admin API Methods
+  // ============================================
+
+  /**
+   * List all users (admin only)
+   */
+  async adminListUsers(): Promise<AdminListUsersResponse> {
+    return this.fetch<AdminListUsersResponse>('/admin/users');
+  }
+
+  /**
+   * Create a new user with API key (admin only)
+   */
+  async adminCreateUser(
+    userId: string,
+    email: string,
+    keyName = 'default'
+  ): Promise<AdminCreateUserResponse> {
+    return this.fetch<AdminCreateUserResponse>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ userId, email, keyName }),
+    });
+  }
+
+  /**
+   * Delete a user (admin only)
+   */
+  async adminDeleteUser(userId: string): Promise<{ userId: string; deleted: boolean }> {
+    return this.fetch<{ userId: string; deleted: boolean }>(
+      `/admin/users/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  /**
+   * List API keys for a user (admin only)
+   */
+  async adminListUserKeys(userId: string): Promise<AdminListKeysResponse> {
+    return this.fetch<AdminListKeysResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/keys`
+    );
+  }
+
+  /**
+   * Create a new API key for a user (admin only)
+   */
+  async adminCreateKey(userId: string, name: string): Promise<AdminCreateKeyResponse> {
+    return this.fetch<AdminCreateKeyResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/keys`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }
+    );
+  }
+
+  /**
+   * Revoke an API key (admin only)
+   */
+  async adminRevokeKey(
+    userId: string,
+    keyName: string
+  ): Promise<{ userId: string; keyName: string; revoked: boolean }> {
+    return this.fetch<{ userId: string; keyName: string; revoked: boolean }>(
+      `/admin/users/${encodeURIComponent(userId)}/keys/${encodeURIComponent(keyName)}`,
       { method: 'DELETE' }
     );
   }

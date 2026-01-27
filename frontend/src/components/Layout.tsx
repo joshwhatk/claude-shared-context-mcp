@@ -33,8 +33,16 @@ export function Layout({ children }: LayoutProps) {
               Shared Context
             </Link>
 
-            {/* User menu */}
+            {/* Navigation and user menu */}
             <div className="flex items-center gap-4">
+              {user?.isAdmin && (
+                <Link
+                  to="/admin"
+                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  Admin
+                </Link>
+              )}
               {user?.email && (
                 <span className="text-sm text-gray-500 hidden sm:block">
                   {user.email}
