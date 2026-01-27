@@ -108,7 +108,7 @@ export function ListPage() {
           <Link
             to="/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md
-                     hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                     hover:bg-blue-700 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
                      transition-colors whitespace-nowrap"
           >
             <svg
@@ -162,7 +162,7 @@ export function ListPage() {
             <Link
               to="/new"
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md
-                       hover:bg-blue-700 transition-colors"
+                       hover:bg-blue-700 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               <svg
                 className="h-4 w-4"
@@ -200,7 +200,8 @@ export function ListPage() {
               key={item.key}
               to={`/view/${encodeURIComponent(item.key)}`}
               className="block bg-white rounded-lg border border-gray-200 p-4
-                       hover:border-gray-300 hover:shadow-sm transition-all"
+                       hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">

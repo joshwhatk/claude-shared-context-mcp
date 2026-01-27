@@ -135,7 +135,7 @@ export function EditPage() {
           {error}
         </div>
         <div className="mt-4">
-          <Link to="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link to="/" className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded">
             Back to list
           </Link>
         </div>
@@ -150,8 +150,9 @@ export function EditPage() {
         <div className="flex items-center gap-4 min-w-0">
           <button
             onClick={handleCancel}
-            className="flex-shrink-0 p-2 -ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex-shrink-0 p-2 -ml-2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 rounded"
             title="Cancel"
+            aria-label="Cancel"
           >
             <svg
               className="h-5 w-5"
@@ -177,7 +178,8 @@ export function EditPage() {
             onClick={handleCancel}
             disabled={isSaving}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md
-                     hover:bg-gray-50 disabled:opacity-50"
+                     hover:bg-gray-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                     focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
           >
             Cancel
           </button>
@@ -185,7 +187,8 @@ export function EditPage() {
             onClick={handleSave}
             disabled={isSaving}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md
-                     hover:bg-blue-700 disabled:opacity-50"
+                     hover:bg-blue-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                     focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           >
             {isSaving ? (
               <>

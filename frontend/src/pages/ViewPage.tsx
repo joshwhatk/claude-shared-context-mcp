@@ -74,7 +74,7 @@ export function ViewPage() {
           {error || 'Item not found'}
         </div>
         <div className="mt-4">
-          <Link to="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link to="/" className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded">
             Back to list
           </Link>
         </div>
@@ -89,8 +89,9 @@ export function ViewPage() {
         <div className="flex items-center gap-4 min-w-0">
           <Link
             to="/"
-            className="flex-shrink-0 p-2 -ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex-shrink-0 p-2 -ml-2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 rounded"
             title="Back to list"
+            aria-label="Back to list"
           >
             <svg
               className="h-5 w-5"
@@ -115,7 +116,7 @@ export function ViewPage() {
           <Link
             to={`/edit/${encodeURIComponent(item.key)}`}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md
-                     hover:bg-gray-50 transition-colors"
+                     hover:bg-gray-50 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
           >
             <svg
               className="h-4 w-4"
@@ -135,7 +136,7 @@ export function ViewPage() {
           <button
             onClick={() => setShowDeleteModal(true)}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm text-red-600 bg-white border border-gray-300 rounded-md
-                     hover:bg-red-50 hover:border-red-300 transition-colors"
+                     hover:bg-red-50 hover:border-red-300 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
           >
             <svg
               className="h-4 w-4"
@@ -176,8 +177,9 @@ export function ViewPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/50 cursor-pointer"
             onClick={() => setShowDeleteModal(false)}
+            aria-hidden="true"
           />
 
           {/* Modal */}
@@ -192,7 +194,8 @@ export function ViewPage() {
                 onClick={() => setShowDeleteModal(false)}
                 disabled={isDeleting}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md
-                         hover:bg-gray-50 disabled:opacity-50"
+                         hover:bg-gray-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                         focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
@@ -200,7 +203,8 @@ export function ViewPage() {
                 onClick={handleDelete}
                 disabled={isDeleting}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md
-                         hover:bg-red-700 disabled:opacity-50"
+                         hover:bg-red-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                         focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
               >
                 {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
