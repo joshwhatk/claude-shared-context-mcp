@@ -6,6 +6,14 @@
 const MAX_KEY_LENGTH = 255;
 const KEY_PATTERN = /^[a-zA-Z0-9_\-\.]+$/;
 
+// User ID constraints
+const MAX_USER_ID_LENGTH = 50;
+const USER_ID_PATTERN = /^[a-zA-Z0-9_\-]+$/;
+
+// Email validation - basic but effective pattern
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 254; // RFC 5321
+
 // Content constraints
 const MAX_CONTENT_SIZE = 102400; // 100KB
 
@@ -98,4 +106,88 @@ export function sanitizeSearch(search: string): string {
     .replace(/\\/g, '\\\\')
     .replace(/%/g, '\\%')
     .replace(/_/g, '\\_');
+}
+
+/**
+ * Validate a user ID
+ * - Must be alphanumeric with dash or underscore
+ * - Maximum 50 characters
+ */
+export function validateUserId(userId: string): ValidationResult {
+  if (!userId || typeof userId !== 'string') {
+    return { valid: false, error: 'User ID is required and must be a string' };
+  }
+
+  if (userId.length === 0) {
+    return { valid: false, error: 'User ID cannot be empty' };
+  }
+
+  if (userId.length > MAX_USER_ID_LENGTH) {
+    return { valid: false, error: `User ID exceeds maximum length of ${MAX_USER_ID_LENGTH} characters` };
+  }
+
+  if (!USER_ID_PATTERN.test(userId)) {
+    return {
+      valid: false,
+      error: 'User ID must contain only alphanumeric characters, dashes, or underscores',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate an email address
+ * - Basic format check (not exhaustive RFC compliance)
+ * - Maximum 254 characters (RFC 5321)
+ */
+export function validateEmail(email: string): ValidationResult {
+  if (!email || typeof email !== 'string') {
+    return { valid: false, error: 'Email is required and must be a string' };
+  }
+
+  if (email.length === 0) {
+    return { valid: false, error: 'Email cannot be empty' };
+  }
+
+  if (email.length > MAX_EMAIL_LENGTH) {
+    return { valid: false, error: `Email exceeds maximum length of ${MAX_EMAIL_LENGTH} characters` };
+  }
+
+  if (!EMAIL_PATTERN.test(email)) {
+    return { valid: false, error: 'Invalid email format' };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate an API key name
+ * - Must be non-empty string
+ * - Maximum 100 characters
+ * - Alphanumeric with spaces, dashes, underscores
+ */
+export function validateApiKeyName(name: string): ValidationResult {
+  if (!name || typeof name !== 'string') {
+    return { valid: false, error: 'API key name is required and must be a string' };
+  }
+
+  if (name.length === 0) {
+    return { valid: false, error: 'API key name cannot be empty' };
+  }
+
+  if (name.length > 100) {
+    return { valid: false, error: 'API key name exceeds maximum length of 100 characters' };
+  }
+
+  // Allow spaces, alphanumeric, dash, underscore
+  const namePattern = /^[a-zA-Z0-9_\- ]+$/;
+  if (!namePattern.test(name)) {
+    return {
+      valid: false,
+      error: 'API key name must contain only alphanumeric characters, spaces, dashes, or underscores',
+    };
+  }
+
+  return { valid: true };
 }

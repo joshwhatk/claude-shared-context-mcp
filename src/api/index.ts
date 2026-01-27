@@ -49,9 +49,9 @@ async function authMiddleware(
   }
 
   try {
-    const userId = await getUserByApiKey(apiKey);
+    const userInfo = await getUserByApiKey(apiKey);
 
-    if (!userId) {
+    if (!userInfo) {
       res.status(403).json({
         success: false,
         error: 'Invalid API key',
@@ -61,8 +61,9 @@ async function authMiddleware(
     }
 
     // Attach user info to request
-    req.authenticatedUserId = userId;
+    req.authenticatedUserId = userInfo.userId;
     req.apiKeyHash = hashApiKey(apiKey);
+    req.isAdmin = userInfo.isAdmin;
 
     next();
   } catch (error) {
@@ -125,9 +126,9 @@ router.post('/auth/verify', rateLimiter, async (req: Request, res: Response): Pr
   }
 
   try {
-    const userId = await getUserByApiKey(apiKey);
+    const userInfo = await getUserByApiKey(apiKey);
 
-    if (!userId) {
+    if (!userInfo) {
       res.status(403).json({
         success: false,
         error: 'Invalid API key',
@@ -137,13 +138,14 @@ router.post('/auth/verify', rateLimiter, async (req: Request, res: Response): Pr
     }
 
     // Get user details
-    const user = await getUserById(userId);
+    const user = await getUserById(userInfo.userId);
 
     res.json({
       success: true,
       data: {
-        userId,
+        userId: userInfo.userId,
         email: user?.email || null,
+        isAdmin: userInfo.isAdmin,
         authenticated: true,
       },
     });

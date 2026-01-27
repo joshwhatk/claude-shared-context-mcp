@@ -162,6 +162,50 @@ export async function runMigrations(): Promise<void> {
       `);
       console.log('[migrations] shared_context user_key unique constraint ready');
 
+      // ============================================
+      // Admin features migrations
+      // ============================================
+
+      // Add is_admin column to users table
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'is_admin'
+          ) THEN
+            ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT false;
+          END IF;
+        END $$
+      `);
+      console.log('[migrations] users.is_admin column ready');
+
+      // Create admin_audit_log table for tracking admin actions
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS admin_audit_log (
+          id SERIAL PRIMARY KEY,
+          admin_user_id TEXT NOT NULL REFERENCES users(id),
+          action TEXT NOT NULL,
+          target_user_id TEXT,
+          details JSONB,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `);
+      console.log('[migrations] admin_audit_log table ready');
+
+      // Create index on admin_audit_log for efficient queries by admin
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_user_id
+        ON admin_audit_log (admin_user_id)
+      `);
+      console.log('[migrations] admin_audit_log index ready');
+
+      // Set joshwhatk as admin (if user exists)
+      await client.query(`
+        UPDATE users SET is_admin = true WHERE id = 'joshwhatk'
+      `);
+      console.log('[migrations] joshwhatk admin status set');
+
       await client.query('COMMIT');
       console.log('[migrations] All migrations completed successfully');
     } catch (err) {

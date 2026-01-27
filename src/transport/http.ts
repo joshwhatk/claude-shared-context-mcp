@@ -21,6 +21,7 @@ declare global {
     interface Request {
       authenticatedUserId?: string;
       apiKeyHash?: string;
+      isAdmin?: boolean;
     }
   }
 }
@@ -98,6 +99,7 @@ async function mcpPostHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   const authenticatedUserId = req.authenticatedUserId;
   const apiKeyHash = req.apiKeyHash;
+  const isAdmin = req.isAdmin ?? false;
 
   try {
     let transport: StreamableHTTPServerTransport;
@@ -118,10 +120,11 @@ async function mcpPostHandler(req: Request, res: Response): Promise<void> {
               userId: authenticatedUserId,
               apiKeyHash: apiKeyHash,
               authenticatedAt: new Date(),
+              isAdmin: isAdmin,
             });
           }
 
-          console.log('[transport] Session initialized:', id.substring(0, 8) + '...', 'user:', authenticatedUserId);
+          console.log('[transport] Session initialized:', id.substring(0, 8) + '...', 'user:', authenticatedUserId, 'admin:', isAdmin);
         },
       });
 
@@ -327,9 +330,9 @@ async function validateApiKeyParam(
 
   try {
     // Look up user by API key in database
-    const userId = await getUserByApiKey(providedKey);
+    const userInfo = await getUserByApiKey(providedKey);
 
-    if (!userId) {
+    if (!userInfo) {
       console.warn('[auth] Invalid API key in URL', {
         path: req.path,
         method: req.method,
@@ -347,8 +350,9 @@ async function validateApiKeyParam(
     }
 
     // Attach user info to request for use in handlers
-    req.authenticatedUserId = userId;
+    req.authenticatedUserId = userInfo.userId;
     req.apiKeyHash = hashApiKey(providedKey);
+    req.isAdmin = userInfo.isAdmin;
 
     next();
   } catch (error) {

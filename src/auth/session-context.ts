@@ -10,6 +10,7 @@ export interface SessionContext {
   userId: string;
   apiKeyHash: string;
   authenticatedAt: Date;
+  isAdmin: boolean;
 }
 
 // In-memory store (sessions are ephemeral)
@@ -65,4 +66,13 @@ export function clearAllSessionContexts(): void {
  */
 export function getActiveSessionCount(): number {
   return sessionContextMap.size;
+}
+
+/**
+ * Check if a session belongs to an admin user
+ * @returns true if the session exists and user is admin, false otherwise
+ */
+export function isSessionAdmin(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  return sessionContextMap.get(sessionId)?.isAdmin ?? false;
 }

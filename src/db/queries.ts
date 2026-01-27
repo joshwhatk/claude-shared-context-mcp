@@ -54,15 +54,26 @@ export function hashApiKey(plainKey: string): string {
 }
 
 /**
- * Look up user ID by API key
- * Also updates last_used_at timestamp (fire-and-forget)
- * @returns user_id if valid, null if not found
+ * Result of looking up a user by API key
  */
-export async function getUserByApiKey(plainKey: string): Promise<string | null> {
+export interface UserByApiKeyResult {
+  userId: string;
+  isAdmin: boolean;
+}
+
+/**
+ * Look up user ID and admin status by API key
+ * Also updates last_used_at timestamp (fire-and-forget)
+ * @returns user info if valid, null if not found
+ */
+export async function getUserByApiKey(plainKey: string): Promise<UserByApiKeyResult | null> {
   const keyHash = hashApiKey(plainKey);
 
-  const result = await query<{ user_id: string }>(
-    'SELECT user_id FROM api_keys WHERE key_hash = $1',
+  const result = await query<{ user_id: string; is_admin: boolean }>(
+    `SELECT ak.user_id, COALESCE(u.is_admin, false) as is_admin
+     FROM api_keys ak
+     JOIN users u ON ak.user_id = u.id
+     WHERE ak.key_hash = $1`,
     [keyHash]
   );
 
@@ -76,7 +87,10 @@ export async function getUserByApiKey(plainKey: string): Promise<string | null> 
     [keyHash]
   ).catch((err) => console.error('[queries] Failed to update last_used_at:', err));
 
-  return result.rows[0].user_id;
+  return {
+    userId: result.rows[0].user_id,
+    isAdmin: result.rows[0].is_admin,
+  };
 }
 
 /**
@@ -363,5 +377,174 @@ export async function getContextHistory(
     [userId, key, limit]
   );
 
+  return result.rows;
+}
+
+// ============================================
+// Admin Functions
+// ============================================
+
+export interface UserWithKeyCount {
+  id: string;
+  email: string;
+  auth_provider: string;
+  is_admin: boolean;
+  created_at: Date;
+  updated_at: Date;
+  api_key_count: number;
+  context_entry_count: number;
+}
+
+export interface AdminAuditEntry {
+  id: number;
+  admin_user_id: string;
+  action: string;
+  target_user_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: Date;
+}
+
+/**
+ * List all users with their API key and context entry counts (admin-only)
+ * @returns Array of users with metadata
+ */
+export async function listAllUsers(): Promise<UserWithKeyCount[]> {
+  const result = await query<UserWithKeyCount>(
+    `SELECT
+       u.id,
+       u.email,
+       u.auth_provider,
+       COALESCE(u.is_admin, false) as is_admin,
+       u.created_at,
+       u.updated_at,
+       COUNT(DISTINCT ak.key_hash) as api_key_count,
+       COUNT(DISTINCT sc.key) as context_entry_count
+     FROM users u
+     LEFT JOIN api_keys ak ON u.id = ak.user_id
+     LEFT JOIN shared_context sc ON u.id = sc.user_id
+     GROUP BY u.id, u.email, u.auth_provider, u.is_admin, u.created_at, u.updated_at
+     ORDER BY u.created_at DESC`
+  );
+
+  return result.rows.map(row => ({
+    ...row,
+    api_key_count: Number(row.api_key_count),
+    context_entry_count: Number(row.context_entry_count),
+  }));
+}
+
+/**
+ * Delete a user by ID (admin-only)
+ * This will cascade delete their API keys and context entries
+ * @returns true if deleted, false if not found
+ */
+export async function deleteUser(userId: string): Promise<boolean> {
+  const client = await getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    // Delete context history entries for this user
+    await client.query(
+      'DELETE FROM context_history WHERE user_id = $1',
+      [userId]
+    );
+
+    // Delete shared context entries for this user
+    await client.query(
+      'DELETE FROM shared_context WHERE user_id = $1',
+      [userId]
+    );
+
+    // Delete API keys (handled by CASCADE, but explicit for clarity)
+    await client.query(
+      'DELETE FROM api_keys WHERE user_id = $1',
+      [userId]
+    );
+
+    // Delete the user
+    const result = await client.query(
+      'DELETE FROM users WHERE id = $1',
+      [userId]
+    );
+
+    await client.query('COMMIT');
+    return (result.rowCount ?? 0) > 0;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[queries] deleteUser failed:', { userId, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Revoke an API key by user ID and key name (admin-only)
+ * @returns true if deleted, false if not found
+ */
+export async function revokeApiKeyByName(userId: string, keyName: string): Promise<boolean> {
+  const result = await query(
+    'DELETE FROM api_keys WHERE user_id = $1 AND name = $2',
+    [userId, keyName]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Log an admin action to the audit log
+ */
+export async function logAdminAction(
+  adminUserId: string,
+  action: string,
+  targetUserId: string | null,
+  details: Record<string, unknown> | null
+): Promise<void> {
+  await query(
+    `INSERT INTO admin_audit_log (admin_user_id, action, target_user_id, details, created_at)
+     VALUES ($1, $2, $3, $4, NOW())`,
+    [adminUserId, action, targetUserId, details ? JSON.stringify(details) : null]
+  );
+}
+
+/**
+ * Get admin audit log entries
+ * @param limit - Maximum number of results (default: 50)
+ * @returns Array of audit entries sorted by created_at DESC
+ */
+export async function getAdminAuditLog(limit = 50): Promise<AdminAuditEntry[]> {
+  const result = await query<AdminAuditEntry>(
+    `SELECT id, admin_user_id, action, target_user_id, details, created_at
+     FROM admin_audit_log
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Check if a user exists by ID
+ */
+export async function userExists(userId: string): Promise<boolean> {
+  const result = await query<{ exists: boolean }>(
+    'SELECT EXISTS(SELECT 1 FROM users WHERE id = $1) as exists',
+    [userId]
+  );
+  return result.rows[0]?.exists ?? false;
+}
+
+/**
+ * List API keys for a user with their names (admin view)
+ */
+export async function listApiKeysForUser(userId: string): Promise<Array<{ name: string; created_at: Date; last_used_at: Date | null }>> {
+  const result = await query<{ name: string; created_at: Date; last_used_at: Date | null }>(
+    `SELECT name, created_at, last_used_at
+     FROM api_keys
+     WHERE user_id = $1
+     ORDER BY created_at DESC`,
+    [userId]
+  );
   return result.rows;
 }
