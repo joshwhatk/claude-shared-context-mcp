@@ -1,11 +1,9 @@
 /**
- * WYSIWYG Markdown editor using Milkdown Crepe
+ * Markdown editor using @uiw/react-md-editor
  */
 
-import { useRef, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { Crepe } from '@milkdown/crepe';
-import '@milkdown/crepe/theme/common/style.css';
-import '@milkdown/crepe/theme/frame.css';
+import { useState, useImperativeHandle, forwardRef, useEffect } from 'react';
+import MDEditor from '@uiw/react-md-editor';
 
 export interface MarkdownEditorRef {
   getMarkdown: () => string;
@@ -19,57 +17,36 @@ interface MarkdownEditorProps {
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
   function MarkdownEditor({ defaultValue = '', onChange, placeholder }, ref) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const editorRef = useRef<Crepe | null>(null);
-    const loadingRef = useRef(false);
+    const [value, setValue] = useState(defaultValue);
+
+    // Update value when defaultValue changes (e.g., when loading existing content)
+    useEffect(() => {
+      setValue(defaultValue);
+    }, [defaultValue]);
 
     // Expose getMarkdown method to parent
     useImperativeHandle(ref, () => ({
-      getMarkdown: () => {
-        if (editorRef.current) {
-          return editorRef.current.getMarkdown();
-        }
-        return defaultValue;
-      },
+      getMarkdown: () => value,
     }));
 
-    useLayoutEffect(() => {
-      if (!containerRef.current || loadingRef.current) return;
-
-      loadingRef.current = true;
-
-      const crepe = new Crepe({
-        root: containerRef.current,
-        defaultValue: defaultValue || placeholder || '',
-      });
-
-      crepe.create().then(() => {
-        loadingRef.current = false;
-        editorRef.current = crepe;
-
-        // Set up change listener
-        if (onChange) {
-          crepe.on((listener) => {
-            listener.markdownUpdated((_ctx, markdown) => {
-              onChange(markdown);
-            });
-          });
-        }
-      });
-
-      return () => {
-        if (!loadingRef.current && editorRef.current) {
-          editorRef.current.destroy();
-          editorRef.current = null;
-        }
-      };
-    }, []); // Only run once on mount
+    const handleChange = (newValue: string | undefined) => {
+      const markdown = newValue || '';
+      setValue(markdown);
+      onChange?.(markdown);
+    };
 
     return (
-      <div
-        ref={containerRef}
-        className="milkdown-editor min-h-[400px] bg-white rounded-lg border border-gray-200 overflow-hidden"
-      />
+      <div data-color-mode="light" className="md-editor-wrapper">
+        <MDEditor
+          value={value}
+          onChange={handleChange}
+          height={400}
+          preview="edit"
+          textareaProps={{
+            placeholder: placeholder || 'Start writing...',
+          }}
+        />
+      </div>
     );
   }
 );

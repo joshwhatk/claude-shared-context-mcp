@@ -9,3 +9,16 @@ body {
 *:focus-visible {
   @apply outline-none ring-2 ring-blue-500 ring-offset-2;
 }
+
+/* MD Editor overrides to match app styling */
+.md-editor-wrapper .w-md-editor {
+  @apply rounded-lg border border-gray-200 shadow-sm;
+}
+
+.md-editor-wrapper .w-md-editor-toolbar {
+  @apply border-b border-gray-200 bg-gray-50;
+}
+
+.md-editor-wrapper .w-md-editor-text-input {
+  @apply font-mono text-sm;
+}
