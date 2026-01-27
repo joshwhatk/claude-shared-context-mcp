@@ -146,6 +146,54 @@ export async function createApiKey(
 }
 
 /**
+ * Create a new user with an initial API key in a single transaction
+ * This ensures we never have orphaned users without API keys
+ * @returns The created user and the plain API key (show once!)
+ */
+export async function createUserWithApiKey(
+  id: string,
+  email: string,
+  keyName: string,
+  authProvider = 'manual'
+): Promise<{ user: User; plainKey: string }> {
+  const client = await getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    // Create user
+    const userResult = await client.query<User>(
+      `INSERT INTO users (id, email, auth_provider, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       RETURNING *`,
+      [id, email, authProvider]
+    );
+    const user = userResult.rows[0];
+
+    // Generate and create API key
+    const plainKey = crypto.randomBytes(32).toString('base64url');
+    const keyHash = hashApiKey(plainKey);
+
+    await client.query(
+      `INSERT INTO api_keys (key_hash, user_id, name, created_at)
+       VALUES ($1, $2, $3, NOW())`,
+      [keyHash, id, keyName]
+    );
+
+    await client.query('COMMIT');
+
+    return { user, plainKey };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[queries] createUserWithApiKey failed:', { id, email, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * List all API keys for a user (without revealing the actual keys)
  */
 export async function listUserApiKeys(userId: string): Promise<Omit<ApiKey, 'key_hash'>[]> {

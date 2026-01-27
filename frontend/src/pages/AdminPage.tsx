@@ -130,9 +130,18 @@ function CreateUserModal({
 
   const handleCopy = async () => {
     if (createdKey) {
-      await navigator.clipboard.writeText(createdKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(createdKey);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Fallback: select the input text for manual copy
+        const input = document.querySelector('input[readonly]') as HTMLInputElement;
+        if (input) {
+          input.select();
+          input.setSelectionRange(0, 99999);
+        }
+      }
     }
   };
 
@@ -325,9 +334,18 @@ function ApiKeysModal({
 
   const handleCopy = async () => {
     if (createdKey) {
-      await navigator.clipboard.writeText(createdKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(createdKey);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Fallback: select the input text for manual copy
+        const input = document.querySelector('input[readonly]') as HTMLInputElement;
+        if (input) {
+          input.select();
+          input.setSelectionRange(0, 99999);
+        }
+      }
     }
   };
 

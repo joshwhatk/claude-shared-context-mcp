@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import {
   listAllUsers,
-  createUser,
+  createUserWithApiKey,
   deleteUser,
   listApiKeysForUser,
   createApiKey,
@@ -100,21 +100,8 @@ router.post('/users', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user already exists
-    if (await userExists(userId)) {
-      res.status(409).json({
-        success: false,
-        error: 'User with this ID already exists',
-        code: 'CONFLICT',
-      });
-      return;
-    }
-
-    // Create user
-    const user = await createUser(userId, email, 'manual');
-
-    // Create initial API key
-    const { plainKey } = await createApiKey(userId, keyName);
+    // Create user with API key in a single transaction
+    const { user, plainKey } = await createUserWithApiKey(userId, email, keyName, 'manual');
 
     // Log admin action
     await logAdminAction(
@@ -138,6 +125,17 @@ router.post('/users', async (req: Request, res: Response): Promise<void> => {
       },
     });
   } catch (error) {
+    // Handle duplicate user ID (unique constraint violation)
+    const pgError = error as { code?: string; constraint?: string };
+    if (pgError.code === '23505') {
+      res.status(409).json({
+        success: false,
+        error: 'User with this ID or email already exists',
+        code: 'CONFLICT',
+      });
+      return;
+    }
+
     console.error('[admin] Create user error:', error);
     res.status(500).json({
       success: false,
