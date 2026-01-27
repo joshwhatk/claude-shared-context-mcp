@@ -77,7 +77,7 @@ export function registerAdminDeleteUserTool(): void {
         }
 
         // Prevent deleting other admins (safety measure)
-        if ('is_admin' in user && user.is_admin) {
+        if (user.is_admin) {
           return createToolResponse(
             formatError(new ToolError(ErrorCode.FORBIDDEN, 'Cannot delete admin users'))
           );
