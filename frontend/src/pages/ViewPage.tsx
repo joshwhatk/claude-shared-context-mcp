@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import { ContentRenderer } from '../components/ContentRenderer';
 import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
 
@@ -158,9 +158,7 @@ export function ViewPage() {
       {/* Content */}
       <div className="bg-white rounded-lg border border-gray-200">
         <div className="p-6">
-          <article className="prose prose-gray max-w-none">
-            <ReactMarkdown>{item.content}</ReactMarkdown>
-          </article>
+          <ContentRenderer content={item.content} />
         </div>
 
         {/* Footer with metadata */}
