@@ -4,27 +4,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MCP Shared Context Server - A Model Context Protocol (MCP) server that enables persistent, shared context across Claude conversations. Deployed to Railway with PostgreSQL, exposing 5 MCP tools via HTTP/SSE transport with bearer token authentication.
+MCP Shared Context Server - A production-ready Model Context Protocol (MCP) server that enables persistent, shared context across Claude conversations with multi-tenant support. Deployed to Railway with PostgreSQL, exposing 10 MCP tools (5 core + 5 admin) via HTTP/SSE transport, plus a REST API and React web frontend.
+
+**Key Features:**
+- 10 MCP tools for context management and admin operations
+- Multi-tenant architecture with user isolation via API keys
+- React web frontend for browsing and editing context
+- Admin panel for user and API key management
+- Audit logging for all context changes and admin actions
 
 **Target Use Case:** Solve the limitation that Claude Projects don't natively support Claude-writable shared files across conversations.
 
 ## Technology Stack
 
+**Backend:**
 - **Runtime:** Node.js 20+ with TypeScript (strict mode, ES2022)
 - **HTTP Server:** Express (chosen over Fastify for better MCP transport examples)
 - **Database:** PostgreSQL with `pg` (node-postgres) - no ORM
 - **MCP SDK:** `@modelcontextprotocol/sdk` (official Anthropic SDK)
 - **Testing:** Vitest with integration tests against separate test database
 - **Deployment:** Railway with managed PostgreSQL
-- **Auth:** Bearer token with timing-safe comparison
+- **Auth:** API key authentication with SHA-256 hashing
+
+**Frontend:**
+- **Framework:** React 19 with TypeScript
+- **Build Tool:** Vite
+- **Routing:** React Router v7
+- **Styling:** Tailwind CSS
+- **Markdown:** Milkdown editor + React Markdown renderer
 
 ## Development Commands
 
 ```bash
-# Development
-npm run dev              # Start dev server with hot reload (tsx watch)
+# Backend Development
+npm run dev              # Start backend dev server with hot reload (tsx watch)
 npm run build            # Compile TypeScript to dist/
 npm start                # Run production build from dist/
+
+# Frontend Development
+cd frontend
+npm install              # Install frontend dependencies
+npm run dev              # Start Vite dev server (port 5173)
+npm run build            # Build frontend for production
+
+# Full Build (backend + frontend)
+npm run build            # Builds backend, then frontend into frontend/dist/
 
 # Testing
 npm test                 # Run all integration tests
@@ -34,24 +58,26 @@ npm run test:watch       # Run tests in watch mode
 npm run migrate          # Run migrations manually (also runs on app startup)
 
 # Local PostgreSQL (Docker)
+docker-compose up -d     # Start PostgreSQL via docker-compose
+# Or manually:
 docker run --name mcp-postgres -e POSTGRES_PASSWORD=dev -p 5432:5432 -d postgres:16
 
 # Environment setup
 cp .env.example .env     # Copy example env file
-# Set DATABASE_URL and MCP_AUTH_TOKEN in .env
+# Set DATABASE_URL in .env
 ```
 
 ## Environment Variables
 
 **Required:**
 - `DATABASE_URL` - PostgreSQL connection string (auto-injected by Railway)
-- `MCP_AUTH_TOKEN` - Bearer token for auth (generate with `openssl rand -base64 32`)
 
 **Optional:**
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development/production)
 - `LOG_LEVEL` - Logging level (info/debug)
 - `TEST_DATABASE_URL` - Test database connection string
+- `MCP_AUTH_TOKEN` - Legacy bearer token (deprecated, use API keys instead)
 
 ## Architecture
 
@@ -62,22 +88,44 @@ src/
 ├── index.ts              # Entry point: env validation, migration, server start, graceful shutdown
 ├── server.ts             # MCP server initialization and configuration
 ├── tools/
-│   ├── index.ts          # Tool registration hub
+│   ├── index.ts          # Tool registration hub (registers all 10 tools)
 │   ├── read-context.ts   # read_context tool
 │   ├── write-context.ts  # write_context tool (with validation)
 │   ├── delete-context.ts # delete_context tool
 │   ├── list-context.ts   # list_context tool (with search)
 │   ├── read-all.ts       # read_all_context tool
-│   ├── validators.ts     # Input validation (key format, content size, search sanitization)
-│   └── errors.ts         # Standardized error handling (ToolError class)
+│   ├── validators.ts     # Input validation (key format, content size, user ID, email)
+│   ├── errors.ts         # Standardized error handling (ToolError class)
+│   └── admin/            # Admin-only tools (5 tools)
+│       ├── guards.ts     # requireAdmin authorization check
+│       ├── admin-list-users.ts
+│       ├── admin-create-user.ts
+│       ├── admin-create-api-key.ts
+│       ├── admin-revoke-api-key.ts
+│       └── admin-delete-user.ts
 ├── db/
 │   ├── client.ts         # PostgreSQL connection pool with SSL and retry logic
 │   ├── migrations.ts     # Schema setup using PostgreSQL advisory locks
 │   └── queries.ts        # Parameterized SQL queries with transaction support
 ├── auth/
-│   └── middleware.ts     # Bearer token validation with timing-safe comparison
+│   ├── middleware.ts     # Bearer token validation with timing-safe comparison
+│   └── session-context.ts # Session-to-user mapping for multi-tenancy
+├── api/                  # REST API routes
+│   ├── index.ts          # Main router with auth middleware
+│   ├── context.ts        # Context CRUD endpoints
+│   └── admin.ts          # Admin user/key management endpoints
 └── transport/
     └── http.ts           # Express HTTP/SSE transport with rate limiting and CORS
+
+frontend/                 # React web application
+├── src/
+│   ├── main.tsx          # App entry point
+│   ├── pages/            # 5 pages: Login, List, View, Edit, Admin
+│   ├── components/       # Layout, MarkdownEditor, Modal, etc.
+│   ├── context/          # AuthContext for authentication state
+│   └── api/              # API client for backend communication
+├── package.json
+└── vite.config.ts
 ```
 
 ### Key Architectural Patterns
@@ -95,22 +143,39 @@ All database operations are in `src/db/queries.ts`. Tools never write SQL direct
 **3. Migration Safety**
 Migrations use PostgreSQL advisory locks to prevent race conditions when multiple Railway instances start simultaneously. The lock ID is 12345 (arbitrary but must be consistent).
 
-**4. MCP Tool Pattern**
-Each tool follows this structure:
+**4. Session Context Management**
+MCP tools receive only a sessionId from the HTTP transport. The session context store (`src/auth/session-context.ts`) maps sessionId to user info:
 ```typescript
-// 1. Validate inputs using validators.ts
-// 2. Call database query from queries.ts
-// 3. Return standardized response (success + data OR error via formatToolError)
-// 4. All errors are ToolError instances with code and message
+// Session store maps: sessionId → { userId, apiKeyHash, isAdmin }
+// Tools call getUserIdFromSession(sessionId) to get the authenticated user
+// This decouples HTTP authentication from MCP tool logic
 ```
 
-**5. Security Layers**
-- **Auth middleware:** Timing-safe token comparison (prevents timing attacks)
+**5. MCP Tool Pattern**
+Each tool follows this structure:
+```typescript
+// 1. Get userId from session context (multi-tenant isolation)
+// 2. Validate inputs using validators.ts
+// 3. Call database query from queries.ts (passing userId)
+// 4. Return standardized response (success + data OR error via formatToolError)
+// 5. All errors are ToolError instances with code and message
+```
+
+**6. API Key Authentication**
+- Users authenticate via API key in URL path: `/mcp/<api-key>`
+- Keys are 32-byte random values (base64url encoded)
+- Hashed with SHA-256 before storage (never stored in plaintext)
+- `last_used_at` timestamp tracked automatically
+
+**7. Security Layers**
+- **API key hashing:** SHA-256 hash stored, plaintext shown only once at creation
+- **Timing-safe comparison:** `crypto.timingSafeEqual()` prevents timing attacks
 - **Input validation:** Key format (alphanumeric + dash/underscore/dot, max 255 chars)
 - **Content validation:** Max 100KB per entry
 - **SQL sanitization:** Search patterns escape LIKE wildcards
 - **Request logging:** Authorization headers redacted, body never logged
 - **Rate limiting:** 100 requests/minute per client
+- **Multi-tenant isolation:** All queries scoped by user_id
 
 ## Database Schema
 
@@ -120,6 +185,7 @@ users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   auth_provider TEXT NOT NULL DEFAULT 'manual',
+  is_admin BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 )
@@ -150,7 +216,7 @@ shared_context (
 INDEX: idx_shared_context_updated_at ON updated_at DESC
 ```
 
-**Audit table:**
+**Context audit table:**
 ```sql
 context_history (
   id SERIAL PRIMARY KEY,
@@ -162,17 +228,66 @@ context_history (
 )
 ```
 
+**Admin audit table:**
+```sql
+admin_audit_log (
+  id SERIAL PRIMARY KEY,
+  admin_user_id TEXT NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,           -- e.g., 'create_user', 'delete_user', 'create_api_key'
+  target_user_id TEXT,
+  details JSONB,                  -- Additional context (key names, etc.)
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+)
+INDEX: idx_admin_audit_log_admin_user_id ON admin_user_id
+```
+
 ## MCP Tools Exposed
 
+**Core Tools (5):**
 1. **read_context(key)** - Read single context entry
 2. **write_context(key, content)** - Create/update context (UPSERT)
 3. **delete_context(key)** - Delete context entry
 4. **list_context(limit?, search?)** - List keys with metadata (default limit: 50, max: 200)
 5. **read_all_context(limit?)** - Get all entries with content (default limit: 20, max: 50)
 
+**Admin Tools (5)** - Require `is_admin=true` on user:
+1. **admin_list_users()** - List all users with API key count and context entry count
+2. **admin_create_user(userId, email, keyName?)** - Create user with initial API key (atomic transaction)
+3. **admin_create_api_key(userId, keyName)** - Create additional API key for existing user
+4. **admin_revoke_api_key(userId, keyName)** - Revoke API key by name
+5. **admin_delete_user(userId)** - Delete user and cascade delete all their data
+
 All tools return standardized responses:
 - Success: `{ success: true, data: {...}, timestamp?: string }`
 - Error: `{ success: false, error: string, code: string }`
+
+## REST API Endpoints
+
+**Authentication:**
+- `POST /api/auth/verify` - Verify API key and get user info
+
+**Context Operations:**
+- `GET /api/context` - List context entries (query: limit, search)
+- `POST /api/context` - Create/update context entry
+- `GET /api/context/:key` - Read single entry
+- `DELETE /api/context/:key` - Delete entry
+
+**Admin Operations (admin-only):**
+- `GET /api/admin/users` - List all users
+- `POST /api/admin/users` - Create new user
+- `DELETE /api/admin/users/:userId` - Delete user
+- `GET /api/admin/users/:userId/keys` - List user's API keys
+- `POST /api/admin/users/:userId/keys` - Create API key for user
+- `DELETE /api/admin/users/:userId/keys/:keyName` - Revoke API key
+
+## Frontend Pages
+
+- `/login` - API key authentication
+- `/` - List all context entries with search
+- `/view/:key` - Read-only view of context entry
+- `/edit/:key` - Edit existing context entry
+- `/new` - Create new context entry
+- `/admin` - Admin panel for user/key management (admin-only)
 
 ## Critical Security Requirements
 
@@ -183,11 +298,15 @@ All tools return standardized responses:
 3. ✅ **Transaction-based audit** - All writes in `src/db/queries.ts` use transactions
 4. ✅ **Timing-safe auth** - `crypto.timingSafeEqual()` in `src/auth/middleware.ts`
 5. ✅ **Input validation** - All tools validate via `src/tools/validators.ts`
-6. ✅ **Rate limiting** - Applied to `/mcp` endpoint in `src/transport/http.ts`
+6. ✅ **Rate limiting** - Applied to `/mcp` and `/api` endpoints in `src/transport/http.ts`
 7. ✅ **Sanitized logging** - Authorization headers redacted, no body logging
 8. ✅ **Environment validation** - Required vars checked in `src/index.ts`
 9. ✅ **Graceful shutdown** - 30s timeout for in-flight requests
 10. ✅ **CORS configuration** - Allow claude.ai origins only
+11. ✅ **API key hashing** - SHA-256 hash stored, plaintext never persisted
+12. ✅ **Multi-tenant isolation** - All queries scoped by user_id from session
+13. ✅ **Admin audit logging** - All admin actions logged to admin_audit_log table
+14. ✅ **Admin authorization** - Admin tools check `is_admin` flag via `requireAdmin()` guard
 
 ## Testing Strategy
 
@@ -202,11 +321,13 @@ Test setup:
 ```
 
 Test coverage:
-- All 5 tools with valid inputs
-- Error cases (not found, invalid input, size limits)
+- All 5 core tools with valid inputs
+- Admin tools with admin/non-admin users
+- Error cases (not found, invalid input, size limits, unauthorized)
 - Audit history verification
 - Search and limit parameters
 - Cross-tool workflows (write → read → delete)
+- Multi-tenant isolation (user A can't see user B's data)
 
 ## Common Gotchas
 
@@ -244,6 +365,23 @@ SQL LIKE wildcards (`%`, `_`, `\`) must be escaped in `list_context` search para
 **5. Token comparison must be timing-safe**
 Use `crypto.timingSafeEqual()`, never `===` or `!==`. Prevents timing attacks.
 
+**6. Always pass userId to database queries**
+Multi-tenant isolation requires every query to be scoped by user_id. Get the userId from session context:
+```typescript
+const userId = getUserIdFromSession(sessionId);
+if (!userId) return formatError('UNAUTHORIZED', 'Not authenticated');
+// Then pass userId to all queries
+const result = await getContext(userId, key);
+```
+
+**7. Admin tools must use requireAdmin guard**
+All admin tools must call `requireAdmin(sessionId)` before performing any operations:
+```typescript
+const adminCheck = requireAdmin(sessionId);
+if (!adminCheck.authorized) return adminCheck.error;
+// adminCheck.userId is the verified admin user ID
+```
+
 ## Railway Deployment
 
 **Build process:**
@@ -254,7 +392,6 @@ Health check: /health
 ```
 
 **Environment variables to set in Railway:**
-- `MCP_AUTH_TOKEN` (generate: `openssl rand -base64 32`)
 - `NODE_ENV=production`
 - `LOG_LEVEL=info`
 - `DATABASE_URL` (auto-injected by Railway PostgreSQL)
@@ -264,9 +401,8 @@ Health check: /health
 # Health check
 curl https://your-app.up.railway.app/health
 
-# Test tools list
-curl -X POST https://your-app.up.railway.app/mcp \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+# Test tools list (replace YOUR_API_KEY with actual key)
+curl -X POST https://your-app.up.railway.app/mcp/YOUR_API_KEY \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -275,14 +411,22 @@ curl -X POST https://your-app.up.railway.app/mcp \
 
 Connect via custom connector:
 1. Claude.ai → Settings → Connectors → Add custom connector
-2. URL: `https://your-app.up.railway.app/mcp`
-3. Auth: Add header `Authorization: Bearer YOUR_TOKEN`
-4. Should see 5 tools available
+2. URL: `https://your-app.up.railway.app/mcp/{YOUR_API_KEY}`
+3. No additional authentication needed (API key is in URL path)
+4. Should see the tools available
 
 Test with natural language:
 - "Save to shared context with key 'test': Hello World"
 - "Read the shared context for 'test'"
 - "List all shared context entries"
+
+## Web Frontend
+
+Access the web UI at the root URL:
+- `https://your-app.up.railway.app/`
+- Enter your API key to authenticate
+- Browse, create, edit, and delete context entries
+- Admin users can access `/admin` to manage users and API keys
 
 ## Planning Documents
 
@@ -304,5 +448,5 @@ Commit frequently with atomic changes. Use conventional commit format (feat/fix/
 
 Co-authored-by line for Claude contributions:
 ```
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ```
