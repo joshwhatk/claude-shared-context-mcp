@@ -3,6 +3,7 @@
  */
 
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { detectContentType } from '../utils/contentDetection';
 import { JsonViewer } from './JsonViewer';
 
@@ -19,7 +20,7 @@ export function ContentRenderer({ content }: ContentRendererProps) {
 
   return (
     <article className="prose prose-gray max-w-none">
-      <ReactMarkdown>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </article>
   );
 }
