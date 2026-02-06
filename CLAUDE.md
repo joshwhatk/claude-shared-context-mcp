@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MCP Shared Context Server - A production-ready Model Context Protocol (MCP) server that enables persistent, shared context across Claude conversations with multi-tenant support. Deployed to Railway with PostgreSQL, exposing 10 MCP tools (5 core + 5 admin) via HTTP/SSE transport, plus a REST API and React web frontend.
+MCP Shared Context Server - A production-ready Model Context Protocol (MCP) server that enables persistent, shared context across Claude conversations with multi-tenant support. Deployed to Railway with PostgreSQL, exposing 8 MCP tools (5 core + 3 admin) via HTTP/SSE transport with Clerk OAuth, plus a REST API and React web frontend.
 
 **Key Features:**
-- 10 MCP tools for context management and admin operations
-- Multi-tenant architecture with user isolation via API keys
-- React web frontend for browsing and editing context
-- Admin panel for user and API key management
+- 8 MCP tools for context management and admin operations
+- Multi-tenant architecture with user isolation via Clerk OAuth
+- React web frontend with Clerk sign-in for browsing and editing context
+- Admin panel for user management
 - Audit logging for all context changes and admin actions
 
 **Target Use Case:** Solve the limitation that Claude Projects don't natively support Claude-writable shared files across conversations.
@@ -22,15 +22,16 @@ MCP Shared Context Server - A production-ready Model Context Protocol (MCP) serv
 - **HTTP Server:** Express (chosen over Fastify for better MCP transport examples)
 - **Database:** PostgreSQL with `pg` (node-postgres) - no ORM
 - **MCP SDK:** `@modelcontextprotocol/sdk` (official Anthropic SDK)
+- **Auth:** Clerk OAuth via `@clerk/express` and `@clerk/mcp-tools`
 - **Testing:** Vitest with integration tests against separate test database
 - **Deployment:** Railway with managed PostgreSQL
-- **Auth:** API key authentication with SHA-256 hashing
 
 **Frontend:**
 - **Framework:** React 19 with TypeScript
 - **Build Tool:** Vite
 - **Routing:** React Router v7
 - **Styling:** Tailwind CSS
+- **Auth:** Clerk React SDK (`@clerk/clerk-react`)
 - **Markdown:** Milkdown editor + React Markdown renderer
 
 ## Development Commands
@@ -64,20 +65,23 @@ docker run --name mcp-postgres -e POSTGRES_PASSWORD=dev -p 5432:5432 -d postgres
 
 # Environment setup
 cp .env.example .env     # Copy example env file
-# Set DATABASE_URL in .env
+# Set DATABASE_URL and Clerk keys in .env
 ```
 
 ## Environment Variables
 
 **Required:**
 - `DATABASE_URL` - PostgreSQL connection string (auto-injected by Railway)
+- `CLERK_PUBLISHABLE_KEY` - Clerk public key (from Clerk dashboard)
+- `CLERK_SECRET_KEY` - Clerk secret key (from Clerk dashboard)
+- `VITE_CLERK_PUBLISHABLE_KEY` - Same publishable key, exposed to Vite frontend
+- `ADMIN_EMAIL` - Email address to auto-provision as admin on first Clerk login
 
 **Optional:**
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development/production)
 - `LOG_LEVEL` - Logging level (info/debug)
 - `TEST_DATABASE_URL` - Test database connection string
-- `MCP_AUTH_TOKEN` - Legacy bearer token (deprecated, use API keys instead)
 
 ## Architecture
 
@@ -88,7 +92,7 @@ src/
 ├── index.ts              # Entry point: env validation, migration, server start, graceful shutdown
 ├── server.ts             # MCP server initialization and configuration
 ├── tools/
-│   ├── index.ts          # Tool registration hub (registers all 10 tools)
+│   ├── index.ts          # Tool registration hub (registers all 8 tools)
 │   ├── read-context.ts   # read_context tool
 │   ├── write-context.ts  # write_context tool (with validation)
 │   ├── delete-context.ts # delete_context tool
@@ -96,34 +100,32 @@ src/
 │   ├── read-all.ts       # read_all_context tool
 │   ├── validators.ts     # Input validation (key format, content size, user ID, email)
 │   ├── errors.ts         # Standardized error handling (ToolError class)
-│   └── admin/            # Admin-only tools (5 tools)
+│   └── admin/            # Admin-only tools (3 tools)
 │       ├── guards.ts     # requireAdmin authorization check
 │       ├── admin-list-users.ts
 │       ├── admin-create-user.ts
-│       ├── admin-create-api-key.ts
-│       ├── admin-revoke-api-key.ts
 │       └── admin-delete-user.ts
 ├── db/
 │   ├── client.ts         # PostgreSQL connection pool with SSL and retry logic
 │   ├── migrations.ts     # Schema setup using PostgreSQL advisory locks
 │   └── queries.ts        # Parameterized SQL queries with transaction support
 ├── auth/
-│   ├── middleware.ts     # Bearer token validation with timing-safe comparison
-│   └── session-context.ts # Session-to-user mapping for multi-tenancy
+│   └── identity.ts       # Unified identity resolver (Clerk authInfo → userId)
 ├── api/                  # REST API routes
-│   ├── index.ts          # Main router with auth middleware
+│   ├── index.ts          # Main router with Clerk JWT auth middleware
 │   ├── context.ts        # Context CRUD endpoints
-│   └── admin.ts          # Admin user/key management endpoints
+│   └── admin.ts          # Admin user management endpoints
 └── transport/
-    └── http.ts           # Express HTTP/SSE transport with rate limiting and CORS
+    └── http.ts           # Express HTTP/SSE transport with Clerk OAuth, CORS
 
 frontend/                 # React web application
 ├── src/
-│   ├── main.tsx          # App entry point
+│   ├── main.tsx          # App entry point with ClerkProvider
+│   ├── App.tsx           # Router with Clerk-based route protection
 │   ├── pages/            # 5 pages: Login, List, View, Edit, Admin
-│   ├── components/       # Layout, MarkdownEditor, Modal, etc.
-│   ├── context/          # AuthContext for authentication state
-│   └── api/              # API client for backend communication
+│   ├── components/       # Layout (with UserButton), MarkdownEditor, etc.
+│   ├── context/          # AuthContext wrapping Clerk hooks + backend admin check
+│   └── api/              # API client using Clerk JWT tokens
 ├── package.json
 └── vite.config.ts
 ```
@@ -143,38 +145,41 @@ All database operations are in `src/db/queries.ts`. Tools never write SQL direct
 **3. Migration Safety**
 Migrations use PostgreSQL advisory locks to prevent race conditions when multiple Railway instances start simultaneously. The lock ID is 12345 (arbitrary but must be consistent).
 
-**4. Session Context Management**
-MCP tools receive only a sessionId from the HTTP transport. The session context store (`src/auth/session-context.ts`) maps sessionId to user info:
+**4. Clerk OAuth Identity Resolution**
+MCP tools receive `authInfo` from the Clerk OAuth middleware. The identity resolver (`src/auth/identity.ts`) extracts the Clerk user ID and looks up the corresponding database user:
 ```typescript
-// Session store maps: sessionId → { userId, apiKeyHash, isAdmin }
-// Tools call getUserIdFromSession(sessionId) to get the authenticated user
-// This decouples HTTP authentication from MCP tool logic
+// Identity resolver: authInfo.extra.userId → database user
+const userId = await resolveUserId(extra);
+if (!userId) return formatError('UNAUTHORIZED', 'Not authenticated');
+// Then pass userId to all queries
+const result = await getContext(userId, key);
 ```
 
 **5. MCP Tool Pattern**
 Each tool follows this structure:
 ```typescript
-// 1. Get userId from session context (multi-tenant isolation)
+// 1. Resolve userId from Clerk authInfo via identity resolver
 // 2. Validate inputs using validators.ts
 // 3. Call database query from queries.ts (passing userId)
 // 4. Return standardized response (success + data OR error via formatToolError)
 // 5. All errors are ToolError instances with code and message
 ```
 
-**6. API Key Authentication**
-- Users authenticate via API key in URL path: `/mcp/<api-key>`
-- Keys are 32-byte random values (base64url encoded)
-- Hashed with SHA-256 before storage (never stored in plaintext)
-- `last_used_at` timestamp tracked automatically
+**6. Clerk OAuth Authentication**
+- MCP clients authenticate via OAuth 2.1 (RFC 9728) at `/mcp`
+- Well-known metadata at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+- Backend validates Clerk JWTs via `@clerk/express` middleware
+- Frontend uses `@clerk/clerk-react` for sign-in and session management
+- New users can only sign up via Clerk invitation
+- First admin is auto-provisioned when their email matches `ADMIN_EMAIL`
 
 **7. Security Layers**
-- **API key hashing:** SHA-256 hash stored, plaintext shown only once at creation
-- **Timing-safe comparison:** `crypto.timingSafeEqual()` prevents timing attacks
+- **Clerk OAuth:** JWT validation via `@clerk/express` middleware
 - **Input validation:** Key format (alphanumeric + dash/underscore/dot, max 255 chars)
 - **Content validation:** Max 100KB per entry
 - **SQL sanitization:** Search patterns escape LIKE wildcards
 - **Request logging:** Authorization headers redacted, body never logged
-- **Rate limiting:** 100 requests/minute per client
+- **Rate limiting:** 100 requests/minute per client on API endpoints
 - **Multi-tenant isolation:** All queries scoped by user_id
 
 ## Database Schema
@@ -184,14 +189,16 @@ Each tool follows this structure:
 users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
+  clerk_id TEXT UNIQUE,
   auth_provider TEXT NOT NULL DEFAULT 'manual',
   is_admin BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 )
+INDEX: idx_users_clerk_id ON clerk_id
 ```
 
-**API Keys table:**
+**API Keys table (legacy, kept for migration compatibility):**
 ```sql
 api_keys (
   key_hash TEXT PRIMARY KEY,
@@ -233,9 +240,9 @@ context_history (
 admin_audit_log (
   id SERIAL PRIMARY KEY,
   admin_user_id TEXT NOT NULL REFERENCES users(id),
-  action TEXT NOT NULL,           -- e.g., 'create_user', 'delete_user', 'create_api_key'
+  action TEXT NOT NULL,           -- e.g., 'create_user', 'delete_user'
   target_user_id TEXT,
-  details JSONB,                  -- Additional context (key names, etc.)
+  details JSONB,                  -- Additional context
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 )
 INDEX: idx_admin_audit_log_admin_user_id ON admin_user_id
@@ -250,12 +257,10 @@ INDEX: idx_admin_audit_log_admin_user_id ON admin_user_id
 4. **list_context(limit?, search?)** - List keys with metadata (default limit: 50, max: 200)
 5. **read_all_context(limit?)** - Get all entries with content (default limit: 20, max: 50)
 
-**Admin Tools (5)** - Require `is_admin=true` on user:
-1. **admin_list_users()** - List all users with API key count and context entry count
-2. **admin_create_user(userId, email, keyName?)** - Create user with initial API key (atomic transaction)
-3. **admin_create_api_key(userId, keyName)** - Create additional API key for existing user
-4. **admin_revoke_api_key(userId, keyName)** - Revoke API key by name
-5. **admin_delete_user(userId)** - Delete user and cascade delete all their data
+**Admin Tools (3)** - Require `is_admin=true` on user:
+1. **admin_list_users()** - List all users with context entry count
+2. **admin_create_user(userId, email)** - Create user manually
+3. **admin_delete_user(userId)** - Delete user and cascade delete all their data
 
 All tools return standardized responses:
 - Success: `{ success: true, data: {...}, timestamp?: string }`
@@ -264,30 +269,33 @@ All tools return standardized responses:
 ## REST API Endpoints
 
 **Authentication:**
-- `POST /api/auth/verify` - Verify API key and get user info
+- `GET /api/auth/me` - Get current user info (from Clerk JWT)
 
 **Context Operations:**
 - `GET /api/context` - List context entries (query: limit, search)
-- `POST /api/context` - Create/update context entry
+- `PUT /api/context/:key` - Create/update context entry
 - `GET /api/context/:key` - Read single entry
 - `DELETE /api/context/:key` - Delete entry
 
 **Admin Operations (admin-only):**
 - `GET /api/admin/users` - List all users
-- `POST /api/admin/users` - Create new user
 - `DELETE /api/admin/users/:userId` - Delete user
-- `GET /api/admin/users/:userId/keys` - List user's API keys
-- `POST /api/admin/users/:userId/keys` - Create API key for user
-- `DELETE /api/admin/users/:userId/keys/:keyName` - Revoke API key
+
+**MCP OAuth Endpoints:**
+- `GET /.well-known/oauth-protected-resource` - OAuth protected resource metadata
+- `GET /.well-known/oauth-authorization-server` - OAuth authorization server metadata
+- `POST /mcp` - MCP Streamable HTTP transport (Clerk OAuth protected)
+- `GET /mcp` - MCP SSE transport
+- `DELETE /mcp` - MCP session cleanup
 
 ## Frontend Pages
 
-- `/login` - API key authentication
+- `/login` - Clerk OAuth sign-in
 - `/` - List all context entries with search
 - `/view/:key` - Read-only view of context entry
 - `/edit/:key` - Edit existing context entry
 - `/new` - Create new context entry
-- `/admin` - Admin panel for user/key management (admin-only)
+- `/admin` - Admin panel for user management (admin-only)
 
 ## Critical Security Requirements
 
@@ -296,17 +304,17 @@ All tools return standardized responses:
 1. ✅ **Migration advisory locks** - Implemented in `src/db/migrations.ts`
 2. ✅ **SSL enabled** - Railway uses self-signed certs, so `rejectUnauthorized: false` in `src/db/client.ts`
 3. ✅ **Transaction-based audit** - All writes in `src/db/queries.ts` use transactions
-4. ✅ **Timing-safe auth** - `crypto.timingSafeEqual()` in `src/auth/middleware.ts`
+4. ✅ **Clerk OAuth** - JWT validation via `@clerk/express` and `@clerk/mcp-tools`
 5. ✅ **Input validation** - All tools validate via `src/tools/validators.ts`
-6. ✅ **Rate limiting** - Applied to `/mcp` and `/api` endpoints in `src/transport/http.ts`
+6. ✅ **Rate limiting** - Applied to `/api` endpoints in `src/api/index.ts`
 7. ✅ **Sanitized logging** - Authorization headers redacted, no body logging
 8. ✅ **Environment validation** - Required vars checked in `src/index.ts`
 9. ✅ **Graceful shutdown** - 30s timeout for in-flight requests
-10. ✅ **CORS configuration** - Allow claude.ai origins only
-11. ✅ **API key hashing** - SHA-256 hash stored, plaintext never persisted
-12. ✅ **Multi-tenant isolation** - All queries scoped by user_id from session
-13. ✅ **Admin audit logging** - All admin actions logged to admin_audit_log table
-14. ✅ **Admin authorization** - Admin tools check `is_admin` flag via `requireAdmin()` guard
+10. ✅ **CORS configuration** - Allow claude.ai origins
+11. ✅ **Multi-tenant isolation** - All queries scoped by user_id from Clerk identity
+12. ✅ **Admin audit logging** - All admin actions logged to admin_audit_log table
+13. ✅ **Admin authorization** - Admin tools check `is_admin` flag via `requireAdmin()` guard
+14. ✅ **Invitation-only signup** - Clerk configured for invitation-only mode
 
 ## Testing Strategy
 
@@ -362,25 +370,25 @@ Railway PostgreSQL internal connections use self-signed certs, so `rejectUnautho
 **4. Search parameters must be sanitized**
 SQL LIKE wildcards (`%`, `_`, `\`) must be escaped in `list_context` search parameter to prevent SQL injection.
 
-**5. Token comparison must be timing-safe**
-Use `crypto.timingSafeEqual()`, never `===` or `!==`. Prevents timing attacks.
-
-**6. Always pass userId to database queries**
-Multi-tenant isolation requires every query to be scoped by user_id. Get the userId from session context:
+**5. Always pass userId to database queries**
+Multi-tenant isolation requires every query to be scoped by user_id. Get the userId from the identity resolver:
 ```typescript
-const userId = getUserIdFromSession(sessionId);
+const userId = await resolveUserId(extra);
 if (!userId) return formatError('UNAUTHORIZED', 'Not authenticated');
 // Then pass userId to all queries
 const result = await getContext(userId, key);
 ```
 
-**7. Admin tools must use requireAdmin guard**
-All admin tools must call `requireAdmin(sessionId)` before performing any operations:
+**6. Admin tools must use requireAdmin guard**
+All admin tools must call `await requireAdmin(extra)` before performing any operations:
 ```typescript
-const adminCheck = requireAdmin(sessionId);
+const adminCheck = await requireAdmin(extra);
 if (!adminCheck.authorized) return adminCheck.error;
-// adminCheck.userId is the verified admin user ID
+// adminCheck.adminUserId is the verified admin user ID
 ```
+
+**7. Auto-provisioning on first login**
+When a Clerk user authenticates for the first time, a database user is auto-created. If their email matches `ADMIN_EMAIL`, they get `is_admin = true`. This happens in both the MCP transport middleware and the REST API auth middleware.
 
 ## Railway Deployment
 
@@ -395,25 +403,27 @@ Health check: /health
 - `NODE_ENV=production`
 - `LOG_LEVEL=info`
 - `DATABASE_URL` (auto-injected by Railway PostgreSQL)
+- `CLERK_PUBLISHABLE_KEY` (from Clerk dashboard)
+- `CLERK_SECRET_KEY` (from Clerk dashboard)
+- `VITE_CLERK_PUBLISHABLE_KEY` (same as CLERK_PUBLISHABLE_KEY)
+- `ADMIN_EMAIL` (admin's email address)
 
 **Post-deployment verification:**
 ```bash
 # Health check
 curl https://your-app.up.railway.app/health
 
-# Test tools list (replace YOUR_API_KEY with actual key)
-curl -X POST https://your-app.up.railway.app/mcp/YOUR_API_KEY \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# OAuth metadata
+curl https://your-app.up.railway.app/.well-known/oauth-protected-resource
 ```
 
 ## Claude.ai Integration
 
-Connect via custom connector:
+Claude connects via MCP OAuth (RFC 9728):
 1. Claude.ai → Settings → Connectors → Add custom connector
-2. URL: `https://your-app.up.railway.app/mcp/{YOUR_API_KEY}`
-3. No additional authentication needed (API key is in URL path)
-4. Should see the tools available
+2. URL: `https://your-app.up.railway.app/mcp`
+3. Claude triggers OAuth flow, user authorizes via Clerk in browser
+4. Should see the tools available after authorization
 
 Test with natural language:
 - "Save to shared context with key 'test': Hello World"
@@ -424,9 +434,17 @@ Test with natural language:
 
 Access the web UI at the root URL:
 - `https://your-app.up.railway.app/`
-- Enter your API key to authenticate
+- Sign in with Clerk OAuth (invitation-only)
 - Browse, create, edit, and delete context entries
-- Admin users can access `/admin` to manage users and API keys
+- Admin users can access `/admin` to manage users
+
+## Clerk Setup
+
+1. Create a Clerk application at https://dashboard.clerk.com
+2. Enable invitation-only sign-up mode
+3. Send invitation to admin email
+4. Copy publishable key and secret key to environment variables
+5. Admin is auto-provisioned on first login when email matches `ADMIN_EMAIL`
 
 ## Planning Documents
 
@@ -448,5 +466,5 @@ Commit frequently with atomic changes. Use conventional commit format (feat/fix/
 
 Co-authored-by line for Claude contributions:
 ```
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
