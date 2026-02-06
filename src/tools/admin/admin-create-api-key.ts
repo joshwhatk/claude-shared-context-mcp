@@ -8,10 +8,7 @@ import { createApiKey, userExists, logAdminAction } from '../../db/queries.js';
 import { validateUserId, validateApiKeyName } from '../validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from '../errors.js';
 import { requireAdmin } from './guards.js';
-
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
+import type { ToolHandlerExtra } from '../../auth/identity.js';
 
 export const adminCreateApiKeyInputSchema = {
   user_id: z.string().describe('The user ID to create an API key for'),
@@ -38,7 +35,7 @@ export function registerAdminCreateApiKeyTool(): void {
     },
     async ({ user_id, name }, extra: ToolHandlerExtra) => {
       // Check admin authorization
-      const adminCheck = requireAdmin(extra.sessionId);
+      const adminCheck = await requireAdmin(extra);
       if (!adminCheck.authorized) {
         return adminCheck.errorResponse;
       }

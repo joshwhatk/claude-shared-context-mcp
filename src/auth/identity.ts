@@ -6,25 +6,16 @@
  * The legacy path will be removed once API key auth is fully deprecated.
  */
 
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { getUserByClerkId } from '../db/queries.js';
 import { getUserIdFromSession, isSessionAdmin } from './session-context.js';
 
 /**
- * Shape of authInfo provided by @clerk/mcp-tools when using Clerk OAuth.
- * The Clerk MCP middleware attaches this to the tool handler's extra parameter.
- */
-interface ClerkAuthInfo {
-  userId?: string;
-  sessionId?: string;
-  [key: string]: unknown;
-}
-
-/**
  * The extra parameter passed to MCP tool handlers.
- * Contains either Clerk authInfo (OAuth path) or sessionId (legacy API key path).
+ * Contains either authInfo (Clerk OAuth path) or sessionId (legacy API key path).
  */
 export interface ToolHandlerExtra {
-  authInfo?: ClerkAuthInfo;
+  authInfo?: AuthInfo;
   sessionId?: string;
 }
 
@@ -35,10 +26,10 @@ export interface ToolHandlerExtra {
  * @returns The internal user ID, or null if not authenticated
  */
 export async function resolveUserId(extra: ToolHandlerExtra): Promise<string | null> {
-  // Clerk OAuth path: authInfo contains Clerk user ID
-  if (extra.authInfo?.userId) {
-    const clerkId = extra.authInfo.userId;
-    const user = await getUserByClerkId(clerkId);
+  // Clerk OAuth path: authInfo.extra contains Clerk user ID
+  const clerkUserId = extra.authInfo?.extra?.userId;
+  if (typeof clerkUserId === 'string') {
+    const user = await getUserByClerkId(clerkUserId);
     return user?.id ?? null;
   }
 
@@ -57,9 +48,9 @@ export async function resolveUserId(extra: ToolHandlerExtra): Promise<string | n
  */
 export async function resolveIsAdmin(extra: ToolHandlerExtra): Promise<boolean> {
   // Clerk OAuth path
-  if (extra.authInfo?.userId) {
-    const clerkId = extra.authInfo.userId;
-    const user = await getUserByClerkId(clerkId);
+  const clerkUserId = extra.authInfo?.extra?.userId;
+  if (typeof clerkUserId === 'string') {
+    const user = await getUserByClerkId(clerkUserId);
     return user?.is_admin ?? false;
   }
 

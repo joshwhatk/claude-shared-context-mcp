@@ -2,7 +2,7 @@
  * Admin authorization guards for MCP tools
  */
 
-import { isSessionAdmin, getUserIdFromSession } from '../../auth/session-context.js';
+import { resolveUserId, resolveIsAdmin, ToolHandlerExtra } from '../../auth/identity.js';
 import { ToolError, ErrorCode, formatError, createToolResponse } from '../errors.js';
 
 export interface AdminAuthResult {
@@ -21,9 +21,9 @@ export type AdminCheck = AdminAuthResult | AdminAuthError;
  * Check if the current session belongs to an admin user
  * Returns either the admin user ID or a formatted error response
  */
-export function requireAdmin(sessionId: string | undefined): AdminCheck {
+export async function requireAdmin(extra: ToolHandlerExtra): Promise<AdminCheck> {
   // First check if user is authenticated
-  const userId = getUserIdFromSession(sessionId);
+  const userId = await resolveUserId(extra);
   if (!userId) {
     return {
       authorized: false,
@@ -34,7 +34,8 @@ export function requireAdmin(sessionId: string | undefined): AdminCheck {
   }
 
   // Then check if user is admin
-  if (!isSessionAdmin(sessionId)) {
+  const isAdmin = await resolveIsAdmin(extra);
+  if (!isAdmin) {
     return {
       authorized: false,
       errorResponse: createToolResponse(
