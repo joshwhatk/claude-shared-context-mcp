@@ -6,10 +6,17 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { server as mcpServer } from '../server.js';
 import { testConnection } from '../db/client.js';
-import { getUserByApiKey, hashApiKey } from '../db/queries.js';
+import { getUserByApiKey, hashApiKey, getUserByClerkId, createClerkUser } from '../db/queries.js';
 import { setSessionContext, clearSessionContext, clearAllSessionContexts } from '../auth/session-context.js';
 import { registerAllTools } from '../tools/index.js';
 import apiRouter from '../api/index.js';
+import { clerkMiddleware, getAuth } from '@clerk/express';
+import {
+  mcpAuthClerk,
+  protectedResourceHandlerClerk,
+  authServerMetadataHandlerClerk,
+  streamableHttpHandler,
+} from '@clerk/mcp-tools/express';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +53,9 @@ export function createApp(): express.Application {
   // Body parsing with size limit
   app.use(express.json({ limit: MAX_BODY_SIZE }));
 
+  // Clerk middleware (global, must be before routes)
+  app.use(clerkMiddleware());
+
   // Request logging middleware (sanitized)
   app.use(requestLogger);
 
@@ -58,9 +68,17 @@ export function createApp(): express.Application {
   // Health check endpoint (no auth required)
   app.get('/health', healthCheckHandler);
 
-  // MCP endpoint with API key authentication in URL path
+  // Well-known OAuth metadata endpoints (public, no auth)
+  app.get('/.well-known/oauth-protected-resource', protectedResourceHandlerClerk());
+  app.get('/.well-known/oauth-authorization-server', authServerMetadataHandlerClerk);
+
+  // Clerk OAuth-protected MCP endpoint (new, no API key in URL)
+  app.post('/mcp', mcpAuthClerk, clerkAutoProvision, streamableHttpHandler(mcpServer));
+  app.get('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
+  app.delete('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
+
+  // Legacy MCP endpoint with API key authentication in URL path
   // URL format: /mcp/<your-api-key>
-  // This is the only supported authentication method for Claude.ai
   app.post('/mcp/:apiKey', validateApiKeyParam, rateLimiter, mcpPostHandler);
   app.get('/mcp/:apiKey', validateApiKeyParam, mcpGetHandler);
   app.delete('/mcp/:apiKey', validateApiKeyParam, mcpDeleteHandler);
@@ -76,7 +94,7 @@ export function createApp(): express.Application {
     // SPA fallback - serve index.html for all non-API routes
     app.get('*', (req: Request, res: Response, next: NextFunction) => {
       // Skip API, MCP, and health routes
-      if (req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path === '/health') {
+      if (req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path === '/health' || req.path.startsWith('/.well-known')) {
         return next();
       }
       res.sendFile(path.join(frontendDist, 'index.html'));
@@ -89,11 +107,44 @@ export function createApp(): express.Application {
   return app;
 }
 
-// Session storage for MCP transports
+// Session storage for MCP transports (legacy API key path)
 const transports: Map<string, StreamableHTTPServerTransport> = new Map();
 
 /**
- * Handle POST requests to /mcp endpoint
+ * Middleware to auto-provision Clerk users in our database on first MCP auth
+ */
+async function clerkAutoProvision(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  try {
+    // Use getAuth from @clerk/express to get the Clerk user ID
+    const auth = getAuth(req);
+    if (!auth?.userId) {
+      return next();
+    }
+
+    const clerkId = auth.userId;
+    const existingUser = await getUserByClerkId(clerkId);
+
+    if (!existingUser) {
+      // Auto-provision: look up email from Clerk
+      const { createClerkClient } = await import('@clerk/express');
+      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
+      const clerkUser = await clerk.users.getUser(clerkId);
+      const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@clerk.user`;
+      const isAdmin = email === process.env.ADMIN_EMAIL;
+
+      await createClerkUser(clerkId, email, isAdmin);
+      console.log('[clerk] Auto-provisioned user:', email, isAdmin ? '(admin)' : '');
+    }
+
+    next();
+  } catch (error) {
+    console.error('[clerk] Auto-provision error:', error);
+    next();
+  }
+}
+
+/**
+ * Handle POST requests to /mcp/:apiKey endpoint (legacy)
  */
 async function mcpPostHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -180,7 +231,7 @@ async function mcpPostHandler(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Handle GET requests to /mcp endpoint (SSE)
+ * Handle GET requests to /mcp/:apiKey endpoint (SSE, legacy)
  */
 async function mcpGetHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string;
@@ -202,7 +253,7 @@ async function mcpGetHandler(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Handle DELETE requests to /mcp endpoint (session cleanup)
+ * Handle DELETE requests to /mcp/:apiKey endpoint (session cleanup, legacy)
  */
 async function mcpDeleteHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string;
@@ -269,7 +320,7 @@ function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Accept');
-  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
+  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id, WWW-Authenticate');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
   // Handle preflight requests
@@ -306,7 +357,7 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
- * Validate API key from URL path parameter
+ * Validate API key from URL path parameter (legacy)
  * Looks up the API key in the database and attaches user info to request
  */
 async function validateApiKeyParam(
