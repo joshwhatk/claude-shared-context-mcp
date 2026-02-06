@@ -30,6 +30,7 @@ export interface User {
   email: string;
   auth_provider: string;
   is_admin: boolean;
+  clerk_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -214,6 +215,55 @@ export async function deleteApiKey(keyHash: string): Promise<boolean> {
   const result = await query(
     'DELETE FROM api_keys WHERE key_hash = $1',
     [keyHash]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+// ============================================
+// Clerk OAuth Functions
+// ============================================
+
+/**
+ * Look up a user by their Clerk ID
+ * @returns The user or null if not found
+ */
+export async function getUserByClerkId(clerkId: string): Promise<User | null> {
+  const result = await query<User>(
+    'SELECT * FROM users WHERE clerk_id = $1',
+    [clerkId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Create a new user from Clerk OAuth
+ * @returns The created user
+ */
+export async function createClerkUser(
+  clerkId: string,
+  email: string,
+  isAdmin: boolean
+): Promise<User> {
+  // Use clerk_<id> as the user ID for Clerk-provisioned users
+  const userId = `clerk_${clerkId}`;
+  const result = await query<User>(
+    `INSERT INTO users (id, email, auth_provider, clerk_id, is_admin, created_at, updated_at)
+     VALUES ($1, $2, 'clerk', $3, $4, NOW(), NOW())
+     RETURNING *`,
+    [userId, email, clerkId, isAdmin]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Link an existing user to a Clerk account
+ * @returns true if updated, false if user not found
+ */
+export async function linkClerkId(userId: string, clerkId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE users SET clerk_id = $1, auth_provider = 'clerk', updated_at = NOW()
+     WHERE id = $2`,
+    [clerkId, userId]
   );
   return (result.rowCount ?? 0) > 0;
 }

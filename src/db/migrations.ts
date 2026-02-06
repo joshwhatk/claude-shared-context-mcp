@@ -206,6 +206,30 @@ export async function runMigrations(): Promise<void> {
       `);
       console.log('[migrations] joshwhatk admin status set');
 
+      // ============================================
+      // Clerk OAuth migrations
+      // ============================================
+
+      // Add clerk_id column to users table for Clerk OAuth integration
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'clerk_id'
+          ) THEN
+            ALTER TABLE users ADD COLUMN clerk_id TEXT UNIQUE;
+          END IF;
+        END $$
+      `);
+      console.log('[migrations] users.clerk_id column ready');
+
+      // Create index on clerk_id for efficient lookups
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_users_clerk_id ON users(clerk_id)
+      `);
+      console.log('[migrations] users.clerk_id index ready');
+
       await client.query('COMMIT');
       console.log('[migrations] All migrations completed successfully');
     } catch (err) {
