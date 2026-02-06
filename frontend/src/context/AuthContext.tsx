@@ -1,5 +1,6 @@
 /**
- * Authentication context for managing user session
+ * Authentication context wrapping Clerk's useAuth/useUser hooks
+ * Provides isAdmin from the backend since admin status is stored in PostgreSQL
  */
 
 import type { ReactNode } from 'react';
@@ -8,22 +9,20 @@ import {
   useContext,
   useState,
   useEffect,
-  useCallback,
 } from 'react';
+import { useAuth as useClerkAuth, useUser } from '@clerk/clerk-react';
 import { api } from '../api/client';
-import type { AuthVerifyResponse } from '../api/client';
 
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
-  user: AuthVerifyResponse | null;
   isAdmin: boolean;
+  email: string | null;
+  userId: string | null;
   error: string | null;
 }
 
 interface AuthContextValue extends AuthState {
-  login: (apiKey: string) => Promise<boolean>;
-  logout: () => void;
   clearError: () => void;
 }
 
@@ -34,105 +33,76 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
+  const { isSignedIn, isLoaded: isAuthLoaded, getToken } = useClerkAuth();
+  const { user: clerkUser, isLoaded: isUserLoaded } = useUser();
+
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
     isLoading: true,
-    user: null,
     isAdmin: false,
+    email: null,
+    userId: null,
     error: null,
   });
 
-  // Check for existing session on mount
+  // Set the token getter on the API client so all requests use Clerk JWT
   useEffect(() => {
-    const checkAuth = async () => {
-      if (!api.isAuthenticated()) {
-        setState({
-          isAuthenticated: false,
-          isLoading: false,
-          user: null,
-          isAdmin: false,
-          error: null,
-        });
-        return;
-      }
+    api.setTokenGetter(getToken);
+  }, [getToken]);
 
+  // Fetch admin status from backend when user signs in
+  useEffect(() => {
+    if (!isAuthLoaded || !isUserLoaded) {
+      return;
+    }
+
+    if (!isSignedIn) {
+      setState({
+        isAuthenticated: false,
+        isLoading: false,
+        isAdmin: false,
+        email: null,
+        userId: null,
+        error: null,
+      });
+      return;
+    }
+
+    const fetchUserInfo = async () => {
       try {
-        const user = await api.verifyAuth();
+        const userInfo = await api.getAuthMe();
         setState({
           isAuthenticated: true,
           isLoading: false,
-          user,
-          isAdmin: user.isAdmin ?? false,
+          isAdmin: userInfo.isAdmin,
+          email: clerkUser?.primaryEmailAddress?.emailAddress ?? null,
+          userId: userInfo.userId,
           error: null,
         });
-      } catch {
-        // Invalid or expired key
-        api.clearApiKey();
+      } catch (err) {
+        console.error('[auth] Failed to fetch user info:', err);
         setState({
-          isAuthenticated: false,
+          isAuthenticated: true,
           isLoading: false,
-          user: null,
           isAdmin: false,
-          error: null,
+          email: clerkUser?.primaryEmailAddress?.emailAddress ?? null,
+          userId: null,
+          error: err instanceof Error ? err.message : 'Failed to load user info',
         });
       }
     };
 
-    checkAuth();
-  }, []);
+    fetchUserInfo();
+  }, [isSignedIn, isAuthLoaded, isUserLoaded, clerkUser]);
 
-  const login = useCallback(async (apiKey: string): Promise<boolean> => {
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      api.setApiKey(apiKey);
-      const user = await api.verifyAuth();
-
-      setState({
-        isAuthenticated: true,
-        isLoading: false,
-        user,
-        isAdmin: user.isAdmin ?? false,
-        error: null,
-      });
-
-      return true;
-    } catch (err) {
-      api.clearApiKey();
-
-      setState({
-        isAuthenticated: false,
-        isLoading: false,
-        user: null,
-        isAdmin: false,
-        error: err instanceof Error ? err.message : 'Authentication failed',
-      });
-
-      return false;
-    }
-  }, []);
-
-  const logout = useCallback(() => {
-    api.clearApiKey();
-    setState({
-      isAuthenticated: false,
-      isLoading: false,
-      user: null,
-      isAdmin: false,
-      error: null,
-    });
-  }, []);
-
-  const clearError = useCallback(() => {
+  const clearError = () => {
     setState((prev) => ({ ...prev, error: null }));
-  }, []);
+  };
 
   return (
     <AuthContext.Provider
       value={{
         ...state,
-        login,
-        logout,
         clearError,
       }}
     >
