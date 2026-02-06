@@ -1,18 +1,17 @@
 /**
  * Unified Identity Resolver
  *
- * Extracts user identity from MCP tool handler's extra parameter.
- * Supports both Clerk OAuth (via authInfo) and legacy API key (via sessionId) paths.
- * The legacy path will be removed once API key auth is fully deprecated.
+ * Extracts user identity from MCP tool handler's extra parameter using Clerk OAuth.
+ * The Clerk MCP middleware attaches authInfo to the tool handler's extra parameter,
+ * which contains the Clerk user ID in authInfo.extra.userId.
  */
 
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { getUserByClerkId } from '../db/queries.js';
-import { getUserIdFromSession, isSessionAdmin } from './session-context.js';
 
 /**
  * The extra parameter passed to MCP tool handlers.
- * Contains either authInfo (Clerk OAuth path) or sessionId (legacy API key path).
+ * Contains authInfo from Clerk OAuth.
  */
 export interface ToolHandlerExtra {
   authInfo?: AuthInfo;
@@ -21,7 +20,6 @@ export interface ToolHandlerExtra {
 
 /**
  * Resolve the internal user ID from the tool handler's extra parameter.
- * Tries Clerk OAuth first, then falls back to legacy session-based auth.
  *
  * @returns The internal user ID, or null if not authenticated
  */
@@ -33,11 +31,6 @@ export async function resolveUserId(extra: ToolHandlerExtra): Promise<string | n
     return user?.id ?? null;
   }
 
-  // Legacy API key path (via session context store)
-  if (extra.sessionId) {
-    return getUserIdFromSession(extra.sessionId);
-  }
-
   return null;
 }
 
@@ -47,16 +40,10 @@ export async function resolveUserId(extra: ToolHandlerExtra): Promise<string | n
  * @returns true if the user is an admin, false otherwise
  */
 export async function resolveIsAdmin(extra: ToolHandlerExtra): Promise<boolean> {
-  // Clerk OAuth path
   const clerkUserId = extra.authInfo?.extra?.userId;
   if (typeof clerkUserId === 'string') {
     const user = await getUserByClerkId(clerkUserId);
     return user?.is_admin ?? false;
-  }
-
-  // Legacy API key path
-  if (extra.sessionId) {
-    return isSessionAdmin(extra.sessionId);
   }
 
   return false;

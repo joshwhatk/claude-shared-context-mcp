@@ -1,13 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { randomUUID } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { server as mcpServer } from '../server.js';
 import { testConnection } from '../db/client.js';
-import { getUserByApiKey, hashApiKey, getUserByClerkId, createClerkUser } from '../db/queries.js';
-import { setSessionContext, clearSessionContext, clearAllSessionContexts } from '../auth/session-context.js';
+import { getUserByClerkId, createClerkUser } from '../db/queries.js';
 import { registerAllTools } from '../tools/index.js';
 import apiRouter from '../api/index.js';
 import { clerkMiddleware, getAuth } from '@clerk/express';
@@ -27,7 +23,6 @@ declare global {
   namespace Express {
     interface Request {
       authenticatedUserId?: string;
-      apiKeyHash?: string;
       isAdmin?: boolean;
     }
   }
@@ -35,11 +30,6 @@ declare global {
 
 // Constants
 const MAX_BODY_SIZE = '1mb';
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 100;
-
-// Simple in-memory rate limiter
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
 /**
  * Create and configure the Express application
@@ -72,16 +62,10 @@ export function createApp(): express.Application {
   app.get('/.well-known/oauth-protected-resource', protectedResourceHandlerClerk());
   app.get('/.well-known/oauth-authorization-server', authServerMetadataHandlerClerk);
 
-  // Clerk OAuth-protected MCP endpoint (new, no API key in URL)
+  // Clerk OAuth-protected MCP endpoint
   app.post('/mcp', mcpAuthClerk, clerkAutoProvision, streamableHttpHandler(mcpServer));
   app.get('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
   app.delete('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
-
-  // Legacy MCP endpoint with API key authentication in URL path
-  // URL format: /mcp/<your-api-key>
-  app.post('/mcp/:apiKey', validateApiKeyParam, rateLimiter, mcpPostHandler);
-  app.get('/mcp/:apiKey', validateApiKeyParam, mcpGetHandler);
-  app.delete('/mcp/:apiKey', validateApiKeyParam, mcpDeleteHandler);
 
   // Serve frontend static files in production
   if (process.env.NODE_ENV === 'production') {
@@ -107,15 +91,11 @@ export function createApp(): express.Application {
   return app;
 }
 
-// Session storage for MCP transports (legacy API key path)
-const transports: Map<string, StreamableHTTPServerTransport> = new Map();
-
 /**
  * Middleware to auto-provision Clerk users in our database on first MCP auth
  */
 async function clerkAutoProvision(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
-    // Use getAuth from @clerk/express to get the Clerk user ID
     const auth = getAuth(req);
     if (!auth?.userId) {
       return next();
@@ -141,137 +121,6 @@ async function clerkAutoProvision(req: Request, _res: Response, next: NextFuncti
     console.error('[clerk] Auto-provision error:', error);
     next();
   }
-}
-
-/**
- * Handle POST requests to /mcp/:apiKey endpoint (legacy)
- */
-async function mcpPostHandler(req: Request, res: Response): Promise<void> {
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
-  const authenticatedUserId = req.authenticatedUserId;
-  const apiKeyHash = req.apiKeyHash;
-  const isAdmin = req.isAdmin ?? false;
-
-  try {
-    let transport: StreamableHTTPServerTransport;
-
-    if (sessionId && transports.has(sessionId)) {
-      // Reuse existing session
-      transport = transports.get(sessionId)!;
-    } else if (!sessionId && isInitializeRequest(req.body)) {
-      // New session initialization
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => {
-          transports.set(id, transport);
-
-          // Associate user with this session for tool handlers
-          if (authenticatedUserId && apiKeyHash) {
-            setSessionContext(id, {
-              userId: authenticatedUserId,
-              apiKeyHash: apiKeyHash,
-              authenticatedAt: new Date(),
-              isAdmin: isAdmin,
-            });
-          }
-
-          console.log('[transport] Session initialized:', id.substring(0, 8) + '...', 'user:', authenticatedUserId, 'admin:', isAdmin);
-        },
-      });
-
-      // Clean up on close
-      transport.onclose = () => {
-        if (transport.sessionId) {
-          transports.delete(transport.sessionId);
-          clearSessionContext(transport.sessionId);
-          console.log('[transport] Session closed:', transport.sessionId.substring(0, 8) + '...');
-        }
-      };
-
-      // Connect MCP server to this transport
-      await mcpServer.connect(transport);
-    } else if (!sessionId) {
-      // No session ID and not an initialize request
-      res.status(400).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Missing session ID. Send an initialize request first.',
-        },
-        id: null,
-      });
-      return;
-    } else {
-      // Session ID provided but not found
-      res.status(400).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Invalid or expired session',
-        },
-        id: null,
-      });
-      return;
-    }
-
-    await transport.handleRequest(req, res, req.body);
-  } catch (error) {
-    console.error('[transport] Error handling MCP request:', error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32603,
-          message: 'Internal server error',
-        },
-        id: null,
-      });
-    }
-  }
-}
-
-/**
- * Handle GET requests to /mcp/:apiKey endpoint (SSE, legacy)
- */
-async function mcpGetHandler(req: Request, res: Response): Promise<void> {
-  const sessionId = req.headers['mcp-session-id'] as string;
-
-  if (!sessionId || !transports.has(sessionId)) {
-    res.status(400).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32000,
-        message: 'Invalid or missing session',
-      },
-      id: null,
-    });
-    return;
-  }
-
-  const transport = transports.get(sessionId)!;
-  await transport.handleRequest(req, res);
-}
-
-/**
- * Handle DELETE requests to /mcp/:apiKey endpoint (session cleanup, legacy)
- */
-async function mcpDeleteHandler(req: Request, res: Response): Promise<void> {
-  const sessionId = req.headers['mcp-session-id'] as string;
-
-  if (!sessionId || !transports.has(sessionId)) {
-    res.status(400).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32000,
-        message: 'Invalid or missing session',
-      },
-      id: null,
-    });
-    return;
-  }
-
-  const transport = transports.get(sessionId)!;
-  await transport.handleRequest(req, res);
 }
 
 /**
@@ -357,107 +206,6 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
- * Validate API key from URL path parameter (legacy)
- * Looks up the API key in the database and attaches user info to request
- */
-async function validateApiKeyParam(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  const providedKey = req.params.apiKey;
-
-  if (!providedKey) {
-    res.status(401).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32001,
-        message: 'API key required in URL path',
-      },
-      id: null,
-    });
-    return;
-  }
-
-  try {
-    // Look up user by API key in database
-    const userInfo = await getUserByApiKey(providedKey);
-
-    if (!userInfo) {
-      console.warn('[auth] Invalid API key in URL', {
-        path: req.path,
-        method: req.method,
-        ip: req.ip,
-      });
-      res.status(403).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32002,
-          message: 'Invalid API key',
-        },
-        id: null,
-      });
-      return;
-    }
-
-    // Attach user info to request for use in handlers
-    req.authenticatedUserId = userInfo.userId;
-    req.apiKeyHash = hashApiKey(providedKey);
-    req.isAdmin = userInfo.isAdmin;
-
-    next();
-  } catch (error) {
-    console.error('[auth] Error validating API key:', error);
-    res.status(500).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32603,
-        message: 'Authentication error',
-      },
-      id: null,
-    });
-  }
-}
-
-/**
- * Simple rate limiter middleware
- */
-function rateLimiter(req: Request, res: Response, next: NextFunction): void {
-  const clientId = req.ip || 'unknown';
-  const now = Date.now();
-
-  let clientData = rateLimitMap.get(clientId);
-
-  if (!clientData || now > clientData.resetTime) {
-    // Reset or initialize
-    clientData = { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS };
-    rateLimitMap.set(clientId, clientData);
-  } else {
-    clientData.count++;
-  }
-
-  // Set rate limit headers
-  res.setHeader('X-RateLimit-Limit', RATE_LIMIT_MAX_REQUESTS);
-  res.setHeader('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT_MAX_REQUESTS - clientData.count));
-  res.setHeader('X-RateLimit-Reset', Math.ceil(clientData.resetTime / 1000));
-
-  if (clientData.count > RATE_LIMIT_MAX_REQUESTS) {
-    console.warn('[ratelimit] Rate limit exceeded', { clientId, count: clientData.count });
-    res.status(429).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32000,
-        message: 'Rate limit exceeded. Please wait before making more requests.',
-      },
-      id: null,
-    });
-    return;
-  }
-
-  next();
-}
-
-/**
  * Error handling middleware
  */
 function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
@@ -484,21 +232,4 @@ export function initializeServer(): express.Application {
   registerAllTools();
 
   return createApp();
-}
-
-/**
- * Clean up all active sessions
- */
-export function cleanupSessions(): void {
-  console.log(`[transport] Cleaning up ${transports.size} active sessions...`);
-  for (const [sessionId, transport] of transports) {
-    try {
-      transport.close();
-      transports.delete(sessionId);
-    } catch (error) {
-      console.error(`[transport] Error closing session ${sessionId}:`, error);
-    }
-  }
-  // Clear all session contexts
-  clearAllSessionContexts();
 }

@@ -35,5 +35,5 @@ export function registerAllTools(): void {
   // Admin tools
   registerAllAdminTools();
 
-  console.log('[tools] All 10 MCP tools registered successfully');
+  console.log('[tools] All 8 MCP tools registered successfully');
 }
