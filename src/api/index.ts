@@ -1,70 +1,57 @@
 /**
- * REST API router setup with authentication middleware
+ * REST API router setup with Clerk JWT authentication
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { getUserByApiKey, hashApiKey, getUserById } from '../db/queries.js';
+import { getAuth, createClerkClient } from '@clerk/express';
+import { getUserByClerkId, createClerkUser } from '../db/queries.js';
 import contextRouter from './context.js';
 import adminRouter from './admin.js';
 
 const router = Router();
 
-// Rate limiting for API endpoints (separate from MCP rate limiter)
+// Rate limiting for API endpoints
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
 /**
- * Extract API key from Authorization header
- * Expects: "Bearer <api-key>"
- */
-function extractApiKey(authHeader: string | undefined): string | null {
-  if (!authHeader) return null;
-
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
-    return null;
-  }
-
-  return parts[1];
-}
-
-/**
- * Authentication middleware for REST API
- * Validates Bearer token and attaches user info to request
+ * Authentication middleware for REST API using Clerk JWT
+ * Validates Clerk session and auto-provisions users
  */
 async function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const apiKey = extractApiKey(req.headers.authorization);
+  const clerkAuth = getAuth(req);
 
-  if (!apiKey) {
+  if (!clerkAuth?.userId) {
     res.status(401).json({
       success: false,
-      error: 'Authentication required. Provide API key in Authorization header.',
+      error: 'Authentication required',
       code: 'UNAUTHORIZED',
     });
     return;
   }
 
   try {
-    const userInfo = await getUserByApiKey(apiKey);
+    let user = await getUserByClerkId(clerkAuth.userId);
 
-    if (!userInfo) {
-      res.status(403).json({
-        success: false,
-        error: 'Invalid API key',
-        code: 'FORBIDDEN',
-      });
-      return;
+    if (!user) {
+      // Auto-provision: Clerk invitation-only means only invited users reach here
+      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
+      const clerkUser = await clerk.users.getUser(clerkAuth.userId);
+      const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkAuth.userId}@clerk.user`;
+      const isAdmin = email === process.env.ADMIN_EMAIL;
+
+      user = await createClerkUser(clerkAuth.userId, email, isAdmin);
+      console.log('[api] Auto-provisioned Clerk user:', email, isAdmin ? '(admin)' : '');
     }
 
     // Attach user info to request
-    req.authenticatedUserId = userInfo.userId;
-    req.apiKeyHash = hashApiKey(apiKey);
-    req.isAdmin = userInfo.isAdmin;
+    req.authenticatedUserId = user.id;
+    req.isAdmin = user.is_admin;
 
     next();
   } catch (error) {
@@ -111,50 +98,49 @@ function rateLimiter(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
- * POST /api/auth/verify
- * Verify API key and return user info
+ * GET /api/auth/me
+ * Get current authenticated user info from Clerk session
  */
-router.post('/auth/verify', rateLimiter, async (req: Request, res: Response): Promise<void> => {
-  const apiKey = extractApiKey(req.headers.authorization);
+router.get('/auth/me', rateLimiter, async (req: Request, res: Response): Promise<void> => {
+  const clerkAuth = getAuth(req);
 
-  if (!apiKey) {
+  if (!clerkAuth?.userId) {
     res.status(401).json({
       success: false,
-      error: 'API key required in Authorization header',
+      error: 'Not authenticated',
       code: 'UNAUTHORIZED',
     });
     return;
   }
 
   try {
-    const userInfo = await getUserByApiKey(apiKey);
+    let user = await getUserByClerkId(clerkAuth.userId);
 
-    if (!userInfo) {
-      res.status(403).json({
-        success: false,
-        error: 'Invalid API key',
-        code: 'FORBIDDEN',
-      });
-      return;
+    if (!user) {
+      // Auto-provision on first visit
+      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
+      const clerkUser = await clerk.users.getUser(clerkAuth.userId);
+      const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkAuth.userId}@clerk.user`;
+      const isAdmin = email === process.env.ADMIN_EMAIL;
+
+      user = await createClerkUser(clerkAuth.userId, email, isAdmin);
+      console.log('[api] Auto-provisioned Clerk user via /auth/me:', email, isAdmin ? '(admin)' : '');
     }
-
-    // Get user details
-    const user = await getUserById(userInfo.userId);
 
     res.json({
       success: true,
       data: {
-        userId: userInfo.userId,
-        email: user?.email || null,
-        isAdmin: userInfo.isAdmin,
+        userId: user.id,
+        email: user.email,
+        isAdmin: user.is_admin,
         authenticated: true,
       },
     });
   } catch (error) {
-    console.error('[api] Verify error:', error);
+    console.error('[api] Auth/me error:', error);
     res.status(500).json({
       success: false,
-      error: 'Verification failed',
+      error: 'Failed to get user info',
       code: 'INTERNAL_ERROR',
     });
   }
