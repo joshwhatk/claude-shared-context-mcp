@@ -2,7 +2,7 @@ import 'dotenv/config';
 import http from 'http';
 import { testConnection, closePool } from './db/client.js';
 import { runMigrations } from './db/migrations.js';
-import { initializeServer } from './transport/http.js';
+import { initializeServer, cleanupSessions } from './transport/http.js';
 
 // Constants
 const DEFAULT_PORT = 3000;
@@ -74,6 +74,7 @@ async function main(): Promise<void> {
     console.log('[startup] Server listening on port', port);
     console.log('[startup] Health check: http://localhost:' + port + '/health');
     console.log('[startup] MCP endpoint: http://localhost:' + port + '/mcp (Clerk OAuth)');
+    console.log('[startup] MCP endpoint: http://localhost:' + port + '/claude-code/mcp (API key header)');
     console.log('[startup] Ready to accept connections');
   });
 
@@ -116,6 +117,10 @@ function setupGracefulShutdown(server: http.Server): void {
           }
         });
       });
+
+      // Clean up MCP sessions
+      console.log('[shutdown] Cleaning up MCP sessions...');
+      cleanupSessions();
 
       // Close database pool
       console.log('[shutdown] Closing database pool...');

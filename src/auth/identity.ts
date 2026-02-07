@@ -1,17 +1,19 @@
 /**
  * Unified Identity Resolver
  *
- * Extracts user identity from MCP tool handler's extra parameter using Clerk OAuth.
- * The Clerk MCP middleware attaches authInfo to the tool handler's extra parameter,
- * which contains the Clerk user ID in authInfo.extra.userId.
+ * Extracts user identity from MCP tool handler's extra parameter.
+ * Supports two auth paths:
+ * 1. Clerk OAuth: authInfo.extra.userId → database user lookup
+ * 2. API key sessions: sessionId → session context store lookup
  */
 
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { getUserByClerkId } from '../db/queries.js';
+import { getUserIdFromSession, isSessionAdmin } from './session-context.js';
 
 /**
  * The extra parameter passed to MCP tool handlers.
- * Contains authInfo from Clerk OAuth.
+ * Contains authInfo from Clerk OAuth or sessionId from API key auth.
  */
 export interface ToolHandlerExtra {
   authInfo?: AuthInfo;
@@ -31,7 +33,8 @@ export async function resolveUserId(extra: ToolHandlerExtra): Promise<string | n
     return user?.id ?? null;
   }
 
-  return null;
+  // API key session path: sessionId → session context store
+  return getUserIdFromSession(extra.sessionId);
 }
 
 /**
@@ -46,5 +49,6 @@ export async function resolveIsAdmin(extra: ToolHandlerExtra): Promise<boolean> 
     return user?.is_admin ?? false;
   }
 
-  return false;
+  // API key session path
+  return isSessionAdmin(extra.sessionId);
 }

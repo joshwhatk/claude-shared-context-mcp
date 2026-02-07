@@ -6,12 +6,16 @@
 import { registerAdminListUsersTool } from './admin-list-users.js';
 import { registerAdminCreateUserTool } from './admin-create-user.js';
 import { registerAdminDeleteUserTool } from './admin-delete-user.js';
+import { registerAdminCreateApiKeyTool } from './admin-create-api-key.js';
+import { registerAdminRevokeApiKeyTool } from './admin-revoke-api-key.js';
 
 // Re-export for external use
 export {
   registerAdminListUsersTool,
   registerAdminCreateUserTool,
   registerAdminDeleteUserTool,
+  registerAdminCreateApiKeyTool,
+  registerAdminRevokeApiKeyTool,
 };
 
 /**
@@ -26,4 +30,10 @@ export function registerAllAdminTools(): void {
 
   registerAdminDeleteUserTool();
   console.log('[tools] Registered: admin_delete_user');
+
+  registerAdminCreateApiKeyTool();
+  console.log('[tools] Registered: admin_create_api_key');
+
+  registerAdminRevokeApiKeyTool();
+  console.log('[tools] Registered: admin_revoke_api_key');
 }

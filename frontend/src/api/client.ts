@@ -52,6 +52,35 @@ export interface AdminListUsersResponse {
   count: number;
 }
 
+export interface AdminApiKey {
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface AdminListKeysResponse {
+  userId: string;
+  keys: AdminApiKey[];
+  count: number;
+}
+
+export interface AdminCreateKeyResponse {
+  userId: string;
+  apiKey: string;
+  keyName: string;
+}
+
+export interface AdminCreateUserResponse {
+  user: {
+    id: string;
+    email: string;
+    is_admin: boolean;
+    created_at: string;
+  };
+  apiKey: string;
+  keyName: string;
+}
+
 export interface SaveResponse extends ContextEntry {
   action: 'created' | 'updated';
 }
@@ -182,11 +211,60 @@ class ApiClient {
   }
 
   /**
+   * Create a new user with API key (admin only)
+   */
+  async adminCreateUser(
+    userId: string,
+    email: string,
+    keyName = 'default'
+  ): Promise<AdminCreateUserResponse> {
+    return this.fetch<AdminCreateUserResponse>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ userId, email, keyName }),
+    });
+  }
+
+  /**
    * Delete a user (admin only)
    */
   async adminDeleteUser(userId: string): Promise<{ userId: string; deleted: boolean }> {
     return this.fetch<{ userId: string; deleted: boolean }>(
       `/admin/users/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  /**
+   * List API keys for a user (admin only)
+   */
+  async adminListUserKeys(userId: string): Promise<AdminListKeysResponse> {
+    return this.fetch<AdminListKeysResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/keys`
+    );
+  }
+
+  /**
+   * Create a new API key for a user (admin only)
+   */
+  async adminCreateKey(userId: string, name: string): Promise<AdminCreateKeyResponse> {
+    return this.fetch<AdminCreateKeyResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/keys`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }
+    );
+  }
+
+  /**
+   * Revoke an API key (admin only)
+   */
+  async adminRevokeKey(
+    userId: string,
+    keyName: string
+  ): Promise<{ userId: string; keyName: string; revoked: boolean }> {
+    return this.fetch<{ userId: string; keyName: string; revoked: boolean }>(
+      `/admin/users/${encodeURIComponent(userId)}/keys/${encodeURIComponent(keyName)}`,
       { method: 'DELETE' }
     );
   }
