@@ -21,7 +21,11 @@ const posthogOptions = {
 
 const app = (
   <StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      signInFallbackRedirectUrl="/app"
+      signUpFallbackRedirectUrl="/app"
+    >
       <App />
     </ClerkProvider>
   </StrictMode>
