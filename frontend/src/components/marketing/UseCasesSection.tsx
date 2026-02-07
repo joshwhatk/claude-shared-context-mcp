@@ -8,7 +8,7 @@ const USE_CASES = [
     description:
       'You write the perfect email template, a thorough code review checklist, or a weekly report format. Instead of losing it when the chat ends, you save it to Shared Context with instructions for how Claude should use it. Then you point a Project at that key, and every new chat in that Project produces consistent output, no setup required. Over time, you refine the template based on results. It gets better every week.',
     example:
-      '"Save my client update email template with instructions" \u2192 Next week: "Write this week\'s client update" \u2192 Claude already knows the format, the tone, and your preferences.',
+      '"Save my client update email template with instructions to Shared Context" \u2192 Next week: "Pull my emailt template from Shared Context and write this week\'s client update" \u2192 Claude already knows the format, the tone, and your preferences.',
   },
   {
     tab: 'Multi-Angle Thinking',
@@ -16,7 +16,7 @@ const USE_CASES = [
     description:
       'Big ideas don\'t fit in a single chat. You generate a document in one conversation, critique it from the perspective of an expert communicator in another, then produce the final deliverable in a third. Shared Context holds the source material steady while you approach it from every angle. You\'re no longer constrained by how much a single conversation can hold.',
     example:
-      'Chat 1: "Generate my project proposal and save it." Chat 2: "Read my proposal and critique it as a skeptical investor." Chat 3: "Create the presentation deck based on the revised proposal."',
+      'Chat 1: "Generate my project proposal and save it to Shared Context." Chat 2: "Read my proposal and critique it as a skeptical investor." Chat 3: "Create the presentation deck based on the revised proposal."',
   },
   {
     tab: 'Living Knowledge Base',
@@ -24,7 +24,7 @@ const USE_CASES = [
     description:
       'You analyze your calendar and set goals for the week. You save that summary to Shared Context. Later, from any conversation, you can pull it up, ask about your priorities, adjust the plan, or use it as input for something else entirely. Over time, these entries accumulate — project decisions, workflow preferences, templates, conventions, reference material. A knowledge base that\'s always current because you keep it current.',
     example:
-      'Monday: "Analyze my calendar and save my weekly plan." Wednesday: "What did I say my priorities were this week?" Friday: "Update the weekly plan with what actually happened."',
+      'Monday: "Analyze my calendar and save my weekly plan to Shared Context." Wednesday: "What did I say my priorities were this week?" Friday: "Update the weekly plan in Shared Context with what actually happened."',
   },
   {
     tab: 'Developer Workflows',
@@ -32,7 +32,7 @@ const USE_CASES = [
     description:
       'Save your PR description template, your error handling conventions, or your architectural decisions. Every chat in every project can reference them. Unlike CLAUDE.md, these aren\'t tied to a single codebase. Unlike Project Instructions, Claude can update them as patterns evolve. It\'s the middle ground between a chat that forgets and a codebase that\'s too rigid.',
     example:
-      '"Save our API design decisions" \u2192 New chats across any project reference them automatically. "Update the error handling conventions based on what we just learned" \u2192 Done.',
+      '"Save our API design decisions to Shared Context" \u2192 New chats across any project reference them automatically when you ask. "Pull our API design decisions from Shared Context and update the error handling conventions based on what we just learned" \u2192 Done.',
   },
 ];
 
