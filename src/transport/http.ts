@@ -94,9 +94,9 @@ export function createApp(): express.Application {
   app.get('/.well-known/oauth-authorization-server', authServerMetadataHandlerClerk);
 
   // Clerk OAuth-protected MCP endpoint
-  app.post('/mcp', mcpAuthClerk, clerkAutoProvision, streamableHttpHandler(mcpServer));
-  app.get('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
-  app.delete('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
+  app.post('/mcp', mcpAuthDebug, mcpAuthClerk, clerkAutoProvision, streamableHttpHandler(mcpServer));
+  app.get('/mcp', mcpAuthDebug, mcpAuthClerk, streamableHttpHandler(mcpServer));
+  app.delete('/mcp', mcpAuthDebug, mcpAuthClerk, streamableHttpHandler(mcpServer));
 
   // API key authenticated MCP endpoint for Claude Code CLI
   app.post('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpPostHandler);
@@ -125,6 +125,55 @@ export function createApp(): express.Application {
   app.use(errorHandler);
 
   return app;
+}
+
+/**
+ * Debug middleware to log MCP OAuth auth state (temporary)
+ */
+function mcpAuthDebug(req: Request, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+  const tokenPrefix = token ? token.substring(0, 10) + '...' : 'none';
+  console.log('[mcp-auth-debug] Incoming request:', {
+    method: req.method,
+    path: req.path,
+    hasAuth: !!authHeader,
+    tokenPrefix,
+    protocol: req.protocol,
+    host: req.get('host'),
+  });
+
+  // Check what clerkMiddleware() produced
+  try {
+    const reqAny = req as any;
+    if (typeof reqAny.auth === 'function') {
+      const authAny = reqAny.auth();
+      console.log('[mcp-auth-debug] clerkMiddleware auth() default:', {
+        isAuthenticated: authAny?.isAuthenticated,
+        tokenType: authAny?.tokenType,
+        userId: authAny?.userId,
+      });
+
+      const authOAuth = reqAny.auth({ acceptsToken: 'oauth_token' });
+      console.log('[mcp-auth-debug] clerkMiddleware auth({ acceptsToken: oauth_token }):', {
+        isAuthenticated: authOAuth?.isAuthenticated,
+        tokenType: authOAuth?.tokenType,
+        userId: authOAuth?.userId,
+        clientId: authOAuth?.clientId,
+        scopes: authOAuth?.scopes,
+      });
+
+      if (!authOAuth?.isAuthenticated && typeof authOAuth?.debug === 'function') {
+        console.log('[mcp-auth-debug] auth debug info:', authOAuth.debug());
+      }
+    } else {
+      console.log('[mcp-auth-debug] req.auth is not a function:', typeof reqAny.auth);
+    }
+  } catch (err) {
+    console.error('[mcp-auth-debug] Error inspecting auth:', err);
+  }
+
+  next();
 }
 
 /**
