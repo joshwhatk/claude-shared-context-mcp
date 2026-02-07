@@ -259,7 +259,9 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 }
 
 /**
- * Find or provision a Clerk user.
+ * Find or provision a Clerk user within a transaction to prevent races.
+ * Uses FOR UPDATE locks to serialize concurrent first-login requests.
+ *
  * 1. If a user with this clerk_id exists, return it.
  * 2. If a user with the same email exists (legacy), link the Clerk ID and return it.
  * 3. Otherwise, create a new user.
@@ -269,20 +271,56 @@ export async function findOrProvisionClerkUser(
   email: string,
   isAdmin: boolean
 ): Promise<User> {
-  // 1. Already linked
-  const byClerkId = await getUserByClerkId(clerkId);
-  if (byClerkId) return byClerkId;
+  const client = await getClient();
 
-  // 2. Legacy user with same email — link to Clerk
-  const byEmail = await getUserByEmail(email);
-  if (byEmail) {
-    await linkClerkId(byEmail.id, clerkId);
-    console.log('[clerk] Linked existing user to Clerk:', byEmail.id, email);
-    return { ...byEmail, clerk_id: clerkId, auth_provider: 'clerk' };
+  try {
+    await client.query('BEGIN');
+
+    // 1. Already linked? Lock the row to prevent concurrent modification.
+    const byClerkId = await client.query<User>(
+      'SELECT * FROM users WHERE clerk_id = $1 FOR UPDATE',
+      [clerkId]
+    );
+    if (byClerkId.rows[0]) {
+      await client.query('COMMIT');
+      return byClerkId.rows[0];
+    }
+
+    // 2. Legacy user with same email — lock and link to Clerk
+    const byEmail = await client.query<User>(
+      'SELECT * FROM users WHERE email = $1 FOR UPDATE',
+      [email]
+    );
+    if (byEmail.rows[0]) {
+      await client.query(
+        `UPDATE users SET clerk_id = $1, auth_provider = 'clerk', updated_at = NOW()
+         WHERE id = $2`,
+        [clerkId, byEmail.rows[0].id]
+      );
+      await client.query('COMMIT');
+      console.log('[clerk] Linked existing user to Clerk:', byEmail.rows[0].id, email);
+      return { ...byEmail.rows[0], clerk_id: clerkId, auth_provider: 'clerk' };
+    }
+
+    // 3. Brand new user
+    const userId = `clerk_${clerkId}`;
+    const result = await client.query<User>(
+      `INSERT INTO users (id, email, auth_provider, clerk_id, is_admin, created_at, updated_at)
+       VALUES ($1, $2, 'clerk', $3, $4, NOW(), NOW())
+       ON CONFLICT (clerk_id) DO UPDATE SET updated_at = NOW()
+       RETURNING *`,
+      [userId, email, clerkId, isAdmin]
+    );
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[queries] findOrProvisionClerkUser failed:', { clerkId, email, error: error.message });
+    throw error;
+  } finally {
+    client.release();
   }
-
-  // 3. Brand new user
-  return createClerkUser(clerkId, email, isAdmin);
 }
 
 /**
