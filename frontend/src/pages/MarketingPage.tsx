@@ -3,6 +3,8 @@ import { HeroSection } from '../components/marketing/HeroSection';
 import { ProblemSection } from '../components/marketing/ProblemSection';
 import { HowItWorksSection } from '../components/marketing/HowItWorksSection';
 import { UseCasesSection } from '../components/marketing/UseCasesSection';
+import { WaitlistSection } from '../components/marketing/WaitlistSection';
+import { Footer } from '../components/marketing/Footer';
 
 export function MarketingPage() {
   return (
@@ -12,6 +14,8 @@ export function MarketingPage() {
       <ProblemSection />
       <HowItWorksSection />
       <UseCasesSection />
+      <WaitlistSection />
+      <Footer />
     </div>
   );
 }
