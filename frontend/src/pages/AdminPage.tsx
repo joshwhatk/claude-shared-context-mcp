@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { api } from '../api/client';
 import type { AdminUser, AdminApiKey } from '../api/client';
 import { usePageTitle } from '../hooks/usePageTitle';
@@ -108,6 +109,7 @@ function CreateUserModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const posthog = usePostHog();
   const [userId, setUserId] = useState('');
   const [email, setEmail] = useState('');
   const [keyName, setKeyName] = useState('default');
@@ -137,6 +139,7 @@ function CreateUserModal({
 
     try {
       const result = await api.adminCreateUser(userId, email, keyName);
+      posthog?.capture('admin_user_created');
       setCreatedKey(result.apiKey);
       onSuccess();
     } catch (err) {
@@ -497,6 +500,7 @@ function ApiKeysModal({
 
 export function AdminPage() {
   usePageTitle('Admin');
+  const posthog = usePostHog();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -529,6 +533,7 @@ export function AdminPage() {
     setIsDeleting(true);
     try {
       await api.adminDeleteUser(deleteConfirm);
+      posthog?.capture('admin_user_deleted');
       setDeleteConfirm(null);
       await loadUsers();
     } catch (err) {

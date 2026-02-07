@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { api } from '../api/client';
 import type { AdminApiKey } from '../api/client';
 import { usePageTitle } from '../hooks/usePageTitle';
@@ -210,6 +211,7 @@ function SetupInstructions() {
 
 export function KeysPage() {
   usePageTitle('API Keys');
+  const posthog = usePostHog();
   const [keys, setKeys] = useState<AdminApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +249,7 @@ export function KeysPage() {
 
     try {
       const result = await api.createMyKey(newKeyName.trim());
+      posthog?.capture('api_key_created');
       setCreatedKey(result.apiKey);
       setNewKeyName('');
       await loadKeys();
@@ -263,6 +266,7 @@ export function KeysPage() {
     setIsRevoking(true);
     try {
       await api.revokeMyKey(revokeConfirm);
+      posthog?.capture('api_key_revoked');
       setRevokeConfirm(null);
       await loadKeys();
     } catch (err) {

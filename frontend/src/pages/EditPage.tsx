@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { usePostHog } from 'posthog-js/react';
 import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
 import { MarkdownEditor } from '../components/MarkdownEditor';
@@ -30,6 +31,7 @@ function validateKey(key: string): string | null {
 export function EditPage() {
   const { key: existingKey } = useParams<{ key: string }>();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const editorRef = useRef<MarkdownEditorRef>(null);
 
   const isNew = !existingKey;
@@ -100,7 +102,10 @@ export function EditPage() {
       setError(null);
 
       const targetKey = isNew ? key : existingKey!;
-      await api.saveContext(targetKey, content);
+      const result = await api.saveContext(targetKey, content);
+
+      const eventName = result.action === 'created' ? 'context_created' : 'context_updated';
+      posthog?.capture(eventName, { key_length: targetKey.length });
 
       // Navigate to view page
       navigate(`/view/${encodeURIComponent(targetKey)}`);

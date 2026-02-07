@@ -2,18 +2,21 @@
  * List page - shows all context items
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { usePostHog } from 'posthog-js/react';
 import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
 import { usePageTitle } from '../hooks/usePageTitle';
 
 export function ListPage() {
   usePageTitle('Context Items');
+  const posthog = usePostHog();
   const [items, setItems] = useState<ContextEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Fetch all items on mount
   useEffect(() => {
@@ -43,6 +46,16 @@ export function ListPage() {
         item.content.toLowerCase().includes(query)
     );
   }, [items, searchQuery]);
+
+  // Track search usage with 1s debounce
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      posthog?.capture('context_searched', { has_results: filteredItems.length > 0 });
+    }, 1000);
+    return () => clearTimeout(searchTimerRef.current);
+  }, [searchQuery, filteredItems.length, posthog]);
 
   // Format relative time
   const formatRelativeTime = (dateString: string) => {

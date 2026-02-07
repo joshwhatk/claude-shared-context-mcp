@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { usePostHog } from 'posthog-js/react';
 import { ContentRenderer } from '../components/ContentRenderer';
 import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
@@ -12,6 +13,7 @@ import { usePageTitle } from '../hooks/usePageTitle';
 export function ViewPage() {
   const { key } = useParams<{ key: string }>();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [item, setItem] = useState<ContextEntry | null>(null);
   usePageTitle(key);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +50,7 @@ export function ViewPage() {
     try {
       setIsDeleting(true);
       await api.deleteContext(key);
+      posthog?.capture('context_deleted');
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item');
