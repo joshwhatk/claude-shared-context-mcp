@@ -6,8 +6,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function ListPage() {
+  usePageTitle('Context Items');
   const [items, setItems] = useState<ContextEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

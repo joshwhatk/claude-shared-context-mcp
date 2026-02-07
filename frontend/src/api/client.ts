@@ -1,5 +1,5 @@
 /**
- * API client for communicating with the backend
+ * API client for communicating with the backend using Clerk JWT tokens
  */
 
 // Types matching backend response formats
@@ -28,7 +28,7 @@ export interface AllContextResponse {
   limit: number;
 }
 
-export interface AuthVerifyResponse {
+export interface AuthMeResponse {
   userId: string;
   email: string | null;
   isAdmin: boolean;
@@ -47,26 +47,15 @@ export interface AdminUser {
   context_entry_count: number;
 }
 
-export interface AdminApiKey {
-  name: string;
-  created_at: string;
-  last_used_at: string | null;
-}
-
 export interface AdminListUsersResponse {
   users: AdminUser[];
   count: number;
 }
 
-export interface AdminCreateUserResponse {
-  user: {
-    id: string;
-    email: string;
-    is_admin: boolean;
-    created_at: string;
-  };
-  apiKey: string;
-  keyName: string;
+export interface AdminApiKey {
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export interface AdminListKeysResponse {
@@ -81,6 +70,17 @@ export interface AdminCreateKeyResponse {
   keyName: string;
 }
 
+export interface AdminCreateUserResponse {
+  user: {
+    id: string;
+    email: string;
+    is_admin: boolean;
+    created_at: string;
+  };
+  apiKey: string;
+  keyName: string;
+}
+
 export interface SaveResponse extends ContextEntry {
   action: 'created' | 'updated';
 }
@@ -91,54 +91,32 @@ export interface ApiError {
   code: string;
 }
 
-// API key storage
-const API_KEY_STORAGE_KEY = 'mcp_api_key';
+type TokenGetter = () => Promise<string | null>;
 
 class ApiClient {
-  private apiKey: string | null = null;
+  private getToken: TokenGetter | null = null;
 
   /**
-   * Set the API key and store in sessionStorage
+   * Set the Clerk token getter function
+   * Called by AuthContext with useAuth().getToken
    */
-  setApiKey(key: string): void {
-    this.apiKey = key;
-    sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
+  setTokenGetter(getter: TokenGetter): void {
+    this.getToken = getter;
   }
 
   /**
-   * Get the current API key
-   */
-  getApiKey(): string | null {
-    if (!this.apiKey) {
-      this.apiKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
-    }
-    return this.apiKey;
-  }
-
-  /**
-   * Clear the API key (logout)
-   */
-  clearApiKey(): void {
-    this.apiKey = null;
-    sessionStorage.removeItem(API_KEY_STORAGE_KEY);
-  }
-
-  /**
-   * Check if user is authenticated
-   */
-  isAuthenticated(): boolean {
-    return !!this.getApiKey();
-  }
-
-  /**
-   * Make an authenticated API request
+   * Make an authenticated API request using Clerk JWT
    */
   private async fetch<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
+    if (!this.getToken) {
+      throw new Error('Token getter not configured');
+    }
+
+    const token = await this.getToken();
+    if (!token) {
       throw new Error('Not authenticated');
     }
 
@@ -146,7 +124,7 @@ class ApiClient {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${token}`,
         ...options.headers,
       },
     });
@@ -165,29 +143,10 @@ class ApiClient {
   }
 
   /**
-   * Verify API key and get user info
+   * GET /api/auth/me - Get current user info
    */
-  async verifyAuth(): Promise<AuthVerifyResponse> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      throw new Error('No API key provided');
-    }
-
-    const response = await fetch('/api/auth/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.error || 'Verification failed');
-    }
-
-    return data.data;
+  async getAuthMe(): Promise<AuthMeResponse> {
+    return this.fetch<AuthMeResponse>('/auth/me');
   }
 
   /**
@@ -236,6 +195,37 @@ class ApiClient {
   async deleteContext(key: string): Promise<{ key: string; deleted: boolean }> {
     return this.fetch<{ key: string; deleted: boolean }>(
       `/context/${encodeURIComponent(key)}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ============================================
+  // Self-Service API Key Methods
+  // ============================================
+
+  /**
+   * List own API keys
+   */
+  async listMyKeys(): Promise<{ keys: AdminApiKey[]; count: number }> {
+    return this.fetch<{ keys: AdminApiKey[]; count: number }>('/keys');
+  }
+
+  /**
+   * Create a new API key for self
+   */
+  async createMyKey(name: string): Promise<{ apiKey: string; keyName: string }> {
+    return this.fetch<{ apiKey: string; keyName: string }>('/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  /**
+   * Revoke own API key by name
+   */
+  async revokeMyKey(keyName: string): Promise<{ keyName: string; revoked: boolean }> {
+    return this.fetch<{ keyName: string; revoked: boolean }>(
+      `/keys/${encodeURIComponent(keyName)}`,
       { method: 'DELETE' }
     );
   }

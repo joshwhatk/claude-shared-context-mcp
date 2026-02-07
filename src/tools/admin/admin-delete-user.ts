@@ -8,10 +8,7 @@ import { deleteUser, getUserById, logAdminAction } from '../../db/queries.js';
 import { validateUserId } from '../validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from '../errors.js';
 import { requireAdmin } from './guards.js';
-
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
+import type { ToolHandlerExtra } from '../../auth/identity.js';
 
 export const adminDeleteUserInputSchema = {
   user_id: z.string().describe('The user ID to delete'),
@@ -37,7 +34,7 @@ export function registerAdminDeleteUserTool(): void {
     },
     async ({ user_id, confirm }, extra: ToolHandlerExtra) => {
       // Check admin authorization
-      const adminCheck = requireAdmin(extra.sessionId);
+      const adminCheck = await requireAdmin(extra);
       if (!adminCheck.authorized) {
         return adminCheck.errorResponse;
       }

@@ -6,10 +6,7 @@ import { server } from '../../server.js';
 import { listAllUsers, logAdminAction } from '../../db/queries.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from '../errors.js';
 import { requireAdmin } from './guards.js';
-
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
+import type { ToolHandlerExtra } from '../../auth/identity.js';
 
 interface UserListItem {
   id: string;
@@ -40,7 +37,7 @@ export function registerAdminListUsersTool(): void {
     },
     async (_args, extra: ToolHandlerExtra) => {
       // Check admin authorization
-      const adminCheck = requireAdmin(extra.sessionId);
+      const adminCheck = await requireAdmin(extra);
       if (!adminCheck.authorized) {
         return adminCheck.errorResponse;
       }

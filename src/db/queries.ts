@@ -30,6 +30,7 @@ export interface User {
   email: string;
   auth_provider: string;
   is_admin: boolean;
+  clerk_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -208,12 +209,149 @@ export async function listUserApiKeys(userId: string): Promise<Omit<ApiKey, 'key
 }
 
 /**
+ * Count the number of API keys for a user
+ */
+export async function countUserApiKeys(userId: string): Promise<number> {
+  const result = await query<{ count: string }>(
+    'SELECT COUNT(*) as count FROM api_keys WHERE user_id = $1',
+    [userId]
+  );
+  return parseInt(result.rows[0].count, 10);
+}
+
+/**
  * Delete an API key by hash
  */
 export async function deleteApiKey(keyHash: string): Promise<boolean> {
   const result = await query(
     'DELETE FROM api_keys WHERE key_hash = $1',
     [keyHash]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+// ============================================
+// Clerk OAuth Functions
+// ============================================
+
+/**
+ * Look up a user by their Clerk ID
+ * @returns The user or null if not found
+ */
+export async function getUserByClerkId(clerkId: string): Promise<User | null> {
+  const result = await query<User>(
+    'SELECT * FROM users WHERE clerk_id = $1',
+    [clerkId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Look up a user by email
+ * @returns The user or null if not found
+ */
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const result = await query<User>(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Find or provision a Clerk user within a transaction to prevent races.
+ * Uses FOR UPDATE locks to serialize concurrent first-login requests.
+ *
+ * 1. If a user with this clerk_id exists, return it.
+ * 2. If a user with the same email exists (legacy), link the Clerk ID and return it.
+ * 3. Otherwise, create a new user.
+ */
+export async function findOrProvisionClerkUser(
+  clerkId: string,
+  email: string,
+  isAdmin: boolean
+): Promise<User> {
+  const client = await getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. Already linked? Lock the row to prevent concurrent modification.
+    const byClerkId = await client.query<User>(
+      'SELECT * FROM users WHERE clerk_id = $1 FOR UPDATE',
+      [clerkId]
+    );
+    if (byClerkId.rows[0]) {
+      await client.query('COMMIT');
+      return byClerkId.rows[0];
+    }
+
+    // 2. Legacy user with same email — lock and link to Clerk
+    const byEmail = await client.query<User>(
+      'SELECT * FROM users WHERE email = $1 FOR UPDATE',
+      [email]
+    );
+    if (byEmail.rows[0]) {
+      await client.query(
+        `UPDATE users SET clerk_id = $1, auth_provider = 'clerk', updated_at = NOW()
+         WHERE id = $2`,
+        [clerkId, byEmail.rows[0].id]
+      );
+      await client.query('COMMIT');
+      console.log('[clerk] Linked existing user to Clerk:', byEmail.rows[0].id, email);
+      return { ...byEmail.rows[0], clerk_id: clerkId, auth_provider: 'clerk' };
+    }
+
+    // 3. Brand new user
+    const userId = `clerk_${clerkId}`;
+    const result = await client.query<User>(
+      `INSERT INTO users (id, email, auth_provider, clerk_id, is_admin, created_at, updated_at)
+       VALUES ($1, $2, 'clerk', $3, $4, NOW(), NOW())
+       ON CONFLICT (clerk_id) DO UPDATE SET updated_at = NOW()
+       RETURNING *`,
+      [userId, email, clerkId, isAdmin]
+    );
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[queries] findOrProvisionClerkUser failed:', { clerkId, email, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Create a new user from Clerk OAuth
+ * @returns The created user
+ */
+export async function createClerkUser(
+  clerkId: string,
+  email: string,
+  isAdmin: boolean
+): Promise<User> {
+  const userId = `clerk_${clerkId}`;
+  const result = await query<User>(
+    `INSERT INTO users (id, email, auth_provider, clerk_id, is_admin, created_at, updated_at)
+     VALUES ($1, $2, 'clerk', $3, $4, NOW(), NOW())
+     ON CONFLICT (clerk_id) DO UPDATE SET updated_at = NOW()
+     RETURNING *`,
+    [userId, email, clerkId, isAdmin]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Link an existing user to a Clerk account
+ * @returns true if updated, false if user not found
+ */
+export async function linkClerkId(userId: string, clerkId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE users SET clerk_id = $1, auth_provider = 'clerk', updated_at = NOW()
+     WHERE id = $2`,
+    [clerkId, userId]
   );
   return (result.rowCount ?? 0) > 0;
 }

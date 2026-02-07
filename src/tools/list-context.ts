@@ -1,14 +1,9 @@
 import { z } from 'zod';
 import { server } from '../server.js';
 import { listContextKeys } from '../db/queries.js';
-import { getUserIdFromSession } from '../auth/session-context.js';
+import { resolveUserId, ToolHandlerExtra } from '../auth/identity.js';
 import { validateLimit } from './validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from './errors.js';
-
-// Minimal type for the extra parameter passed to tool handlers
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
 
 // Constants for list limits
 const DEFAULT_LIMIT = 50;
@@ -43,8 +38,8 @@ export function registerListContextTool(): void {
       inputSchema: listContextInputSchema,
     },
     async ({ limit, search }, extra: ToolHandlerExtra) => {
-      // Get user ID from session context
-      const userId = getUserIdFromSession(extra.sessionId);
+      // Get user ID from identity resolver
+      const userId = await resolveUserId(extra);
       if (!userId) {
         const response = formatError(
           new ToolError(ErrorCode.UNAUTHORIZED, 'Not authenticated')

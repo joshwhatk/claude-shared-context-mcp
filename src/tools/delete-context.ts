@@ -1,14 +1,9 @@
 import { z } from 'zod';
 import { server } from '../server.js';
 import { deleteContext } from '../db/queries.js';
-import { getUserIdFromSession } from '../auth/session-context.js';
+import { resolveUserId, ToolHandlerExtra } from '../auth/identity.js';
 import { validateKey } from './validators.js';
 import { ToolError, ErrorCode, formatSuccess, formatError, createToolResponse } from './errors.js';
-
-// Minimal type for the extra parameter passed to tool handlers
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
 
 // Input schema for delete_context tool
 export const deleteContextInputSchema = {
@@ -33,8 +28,8 @@ export function registerDeleteContextTool(): void {
       inputSchema: deleteContextInputSchema,
     },
     async ({ key }, extra: ToolHandlerExtra) => {
-      // Get user ID from session context
-      const userId = getUserIdFromSession(extra.sessionId);
+      // Get user ID from identity resolver
+      const userId = await resolveUserId(extra);
       if (!userId) {
         const response = formatError(
           new ToolError(ErrorCode.UNAUTHORIZED, 'Not authenticated')

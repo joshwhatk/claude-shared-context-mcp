@@ -3,6 +3,7 @@
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
@@ -10,14 +11,15 @@ import { ListPage } from './pages/ListPage';
 import { ViewPage } from './pages/ViewPage';
 import { EditPage } from './pages/EditPage';
 import { AdminPage } from './pages/AdminPage';
+import { KeysPage } from './pages/KeysPage';
 
 /**
- * Protected route wrapper
+ * Protected route wrapper - requires Clerk sign-in
  */
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isSignedIn, isLoaded } = useClerkAuth();
 
-  if (isLoading) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -25,7 +27,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isSignedIn) {
     return <Navigate to="/login" replace />;
   }
 
@@ -36,9 +38,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * Admin-only route wrapper
  */
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const { isSignedIn, isLoaded } = useClerkAuth();
+  const { isAdmin, isLoading } = useAuth();
 
-  if (isLoading) {
+  if (!isLoaded || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -46,7 +49,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isSignedIn) {
     return <Navigate to="/login" replace />;
   }
 
@@ -61,9 +64,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
  * Public route wrapper (redirects authenticated users)
  */
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isSignedIn, isLoaded } = useClerkAuth();
 
-  if (isLoading) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -71,7 +74,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isAuthenticated) {
+  if (isSignedIn) {
     return <Navigate to="/" replace />;
   }
 
@@ -125,6 +128,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <EditPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/keys"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <KeysPage />
             </Layout>
           </ProtectedRoute>
         }

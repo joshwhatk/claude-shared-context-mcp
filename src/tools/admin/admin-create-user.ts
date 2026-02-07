@@ -8,10 +8,7 @@ import { createUser, createApiKey, getUserById, logAdminAction } from '../../db/
 import { validateUserId, validateEmail, validateApiKeyName } from '../validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from '../errors.js';
 import { requireAdmin } from './guards.js';
-
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
+import type { ToolHandlerExtra } from '../../auth/identity.js';
 
 export const adminCreateUserInputSchema = {
   user_id: z.string().describe('Unique user ID (alphanumeric with dashes/underscores, max 50 chars)'),
@@ -40,7 +37,7 @@ export function registerAdminCreateUserTool(): void {
     },
     async ({ user_id, email, api_key_name }, extra: ToolHandlerExtra) => {
       // Check admin authorization
-      const adminCheck = requireAdmin(extra.sessionId);
+      const adminCheck = await requireAdmin(extra);
       if (!adminCheck.authorized) {
         return adminCheck.errorResponse;
       }

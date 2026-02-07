@@ -3,7 +3,8 @@
  */
 
 import type { ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { UserButton } from '@clerk/clerk-react';
 import { useAuth } from '../context/AuthContext';
 
 interface LayoutProps {
@@ -11,13 +12,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  const { isAdmin } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -30,12 +25,18 @@ export function Layout({ children }: LayoutProps) {
               to="/"
               className="text-lg font-semibold text-gray-900 hover:text-gray-700 transition-colors"
             >
-              Shared Context
+              Shared Context MCP
             </Link>
 
             {/* Navigation and user menu */}
             <div className="flex items-center gap-4">
-              {user?.isAdmin && (
+              <Link
+                to="/keys"
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                API Keys
+              </Link>
+              {isAdmin && (
                 <Link
                   to="/admin"
                   className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
@@ -43,17 +44,7 @@ export function Layout({ children }: LayoutProps) {
                   Admin
                 </Link>
               )}
-              {user?.email && (
-                <span className="text-sm text-gray-500 hidden sm:block">
-                  {user.email}
-                </span>
-              )}
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Sign out
-              </button>
+              <UserButton />
             </div>
           </div>
         </div>

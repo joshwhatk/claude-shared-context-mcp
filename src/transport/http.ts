@@ -8,8 +8,16 @@ import { server as mcpServer } from '../server.js';
 import { testConnection } from '../db/client.js';
 import { getUserByApiKey, hashApiKey } from '../db/queries.js';
 import { setSessionContext, clearSessionContext, clearAllSessionContexts } from '../auth/session-context.js';
+import { provisionClerkUser } from '../auth/provision.js';
 import { registerAllTools } from '../tools/index.js';
 import apiRouter from '../api/index.js';
+import { clerkMiddleware, getAuth } from '@clerk/express';
+import {
+  mcpAuthClerk,
+  protectedResourceHandlerClerk,
+  authServerMetadataHandlerClerk,
+  streamableHttpHandler,
+} from '@clerk/mcp-tools/express';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -33,6 +41,26 @@ const RATE_LIMIT_MAX_REQUESTS = 100;
 
 // Simple in-memory rate limiter
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Periodic cleanup of expired rate limit entries
+const rateLimitCleanupInterval = setInterval(() => {
+  const now = Date.now();
+  let purged = 0;
+  for (const [key, data] of rateLimitMap) {
+    if (now > data.resetTime) {
+      rateLimitMap.delete(key);
+      purged++;
+    }
+  }
+  if (purged > 0 && process.env.LOG_LEVEL === 'debug') {
+    console.log(`[ratelimit] Purged ${purged} expired entries from transport rate limit map`);
+  }
+}, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+rateLimitCleanupInterval.unref(); // Don't keep process alive for cleanup
+
+// Session storage for MCP transports (API key path)
+const transports: Map<string, StreamableHTTPServerTransport> = new Map();
 
 /**
  * Create and configure the Express application
@@ -46,6 +74,9 @@ export function createApp(): express.Application {
   // Body parsing with size limit
   app.use(express.json({ limit: MAX_BODY_SIZE }));
 
+  // Clerk middleware (global, must be before routes)
+  app.use(clerkMiddleware());
+
   // Request logging middleware (sanitized)
   app.use(requestLogger);
 
@@ -58,12 +89,19 @@ export function createApp(): express.Application {
   // Health check endpoint (no auth required)
   app.get('/health', healthCheckHandler);
 
-  // MCP endpoint with API key authentication in URL path
-  // URL format: /mcp/<your-api-key>
-  // This is the only supported authentication method for Claude.ai
-  app.post('/mcp/:apiKey', validateApiKeyParam, rateLimiter, mcpPostHandler);
-  app.get('/mcp/:apiKey', validateApiKeyParam, mcpGetHandler);
-  app.delete('/mcp/:apiKey', validateApiKeyParam, mcpDeleteHandler);
+  // Well-known OAuth metadata endpoints (public, no auth)
+  app.get('/.well-known/oauth-protected-resource', protectedResourceHandlerClerk());
+  app.get('/.well-known/oauth-authorization-server', authServerMetadataHandlerClerk);
+
+  // Clerk OAuth-protected MCP endpoint
+  app.post('/mcp', mcpAuthClerk, clerkAutoProvision, streamableHttpHandler(mcpServer));
+  app.get('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
+  app.delete('/mcp', mcpAuthClerk, streamableHttpHandler(mcpServer));
+
+  // API key authenticated MCP endpoint for Claude Code CLI
+  app.post('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpPostHandler);
+  app.get('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpGetHandler);
+  app.delete('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpDeleteHandler);
 
   // Serve frontend static files in production
   if (process.env.NODE_ENV === 'production') {
@@ -75,8 +113,8 @@ export function createApp(): express.Application {
 
     // SPA fallback - serve index.html for all non-API routes
     app.get('*', (req: Request, res: Response, next: NextFunction) => {
-      // Skip API, MCP, and health routes
-      if (req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path === '/health') {
+      // Skip API, MCP, claude-code, and health routes
+      if (req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path.startsWith('/claude-code') || req.path === '/health' || req.path.startsWith('/.well-known')) {
         return next();
       }
       res.sendFile(path.join(frontendDist, 'index.html'));
@@ -89,11 +127,102 @@ export function createApp(): express.Application {
   return app;
 }
 
-// Session storage for MCP transports
-const transports: Map<string, StreamableHTTPServerTransport> = new Map();
+/**
+ * Middleware to auto-provision Clerk users in our database on first MCP auth
+ */
+async function clerkAutoProvision(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  try {
+    const auth = getAuth(req);
+    if (!auth?.userId) {
+      return next();
+    }
+
+    await provisionClerkUser(auth.userId);
+    next();
+  } catch (error) {
+    console.error('[clerk] Auto-provision error:', error);
+    next();
+  }
+}
 
 /**
- * Handle POST requests to /mcp endpoint
+ * Validate API key from Authorization header
+ * Extracts Bearer token, validates via getUserByApiKey(), sets req properties
+ */
+async function validateApiKeyHeader(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32001,
+        message: 'API key required. Use Authorization: Bearer <api-key>',
+      },
+      id: null,
+    });
+    return;
+  }
+
+  const providedKey = authHeader.slice(7); // Strip "Bearer "
+
+  if (!providedKey) {
+    res.status(401).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32001,
+        message: 'API key required in Authorization header',
+      },
+      id: null,
+    });
+    return;
+  }
+
+  try {
+    const userInfo = await getUserByApiKey(providedKey);
+
+    if (!userInfo) {
+      console.warn('[auth] Invalid API key in header', {
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+      });
+      res.status(403).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32002,
+          message: 'Invalid API key',
+        },
+        id: null,
+      });
+      return;
+    }
+
+    // Attach user info to request for use in handlers
+    req.authenticatedUserId = userInfo.userId;
+    req.apiKeyHash = hashApiKey(providedKey);
+    req.isAdmin = userInfo.isAdmin;
+
+    next();
+  } catch (error) {
+    console.error('[auth] Error validating API key:', error);
+    res.status(500).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32603,
+        message: 'Authentication error',
+      },
+      id: null,
+    });
+  }
+}
+
+/**
+ * Handle POST requests to /claude-code/mcp endpoint
  */
 async function mcpPostHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -180,7 +309,7 @@ async function mcpPostHandler(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Handle GET requests to /mcp endpoint (SSE)
+ * Handle GET requests to /claude-code/mcp endpoint (SSE)
  */
 async function mcpGetHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string;
@@ -202,7 +331,7 @@ async function mcpGetHandler(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Handle DELETE requests to /mcp endpoint (session cleanup)
+ * Handle DELETE requests to /claude-code/mcp endpoint (session cleanup)
  */
 async function mcpDeleteHandler(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers['mcp-session-id'] as string;
@@ -259,17 +388,17 @@ function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (origin) {
-    // For development/testing, allow any origin but log it
+  } else if (origin && process.env.NODE_ENV !== 'production') {
+    // Allow any origin in development only
     res.setHeader('Access-Control-Allow-Origin', origin);
     if (process.env.LOG_LEVEL === 'debug') {
-      console.log('[cors] Allowing non-Claude origin:', origin);
+      console.log('[cors] Allowing non-Claude origin (dev):', origin);
     }
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Accept');
-  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
+  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id, WWW-Authenticate');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
   // Handle preflight requests
@@ -306,69 +435,6 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
- * Validate API key from URL path parameter
- * Looks up the API key in the database and attaches user info to request
- */
-async function validateApiKeyParam(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  const providedKey = req.params.apiKey;
-
-  if (!providedKey) {
-    res.status(401).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32001,
-        message: 'API key required in URL path',
-      },
-      id: null,
-    });
-    return;
-  }
-
-  try {
-    // Look up user by API key in database
-    const userInfo = await getUserByApiKey(providedKey);
-
-    if (!userInfo) {
-      console.warn('[auth] Invalid API key in URL', {
-        path: req.path,
-        method: req.method,
-        ip: req.ip,
-      });
-      res.status(403).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32002,
-          message: 'Invalid API key',
-        },
-        id: null,
-      });
-      return;
-    }
-
-    // Attach user info to request for use in handlers
-    req.authenticatedUserId = userInfo.userId;
-    req.apiKeyHash = hashApiKey(providedKey);
-    req.isAdmin = userInfo.isAdmin;
-
-    next();
-  } catch (error) {
-    console.error('[auth] Error validating API key:', error);
-    res.status(500).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32603,
-        message: 'Authentication error',
-      },
-      id: null,
-    });
-  }
-}
-
-/**
  * Simple rate limiter middleware
  */
 function rateLimiter(req: Request, res: Response, next: NextFunction): void {
@@ -378,14 +444,12 @@ function rateLimiter(req: Request, res: Response, next: NextFunction): void {
   let clientData = rateLimitMap.get(clientId);
 
   if (!clientData || now > clientData.resetTime) {
-    // Reset or initialize
     clientData = { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS };
     rateLimitMap.set(clientId, clientData);
   } else {
     clientData.count++;
   }
 
-  // Set rate limit headers
   res.setHeader('X-RateLimit-Limit', RATE_LIMIT_MAX_REQUESTS);
   res.setHeader('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT_MAX_REQUESTS - clientData.count));
   res.setHeader('X-RateLimit-Reset', Math.ceil(clientData.resetTime / 1000));
@@ -450,4 +514,7 @@ export function cleanupSessions(): void {
   }
   // Clear all session contexts
   clearAllSessionContexts();
+
+  // Stop rate limit cleanup interval
+  clearInterval(rateLimitCleanupInterval);
 }

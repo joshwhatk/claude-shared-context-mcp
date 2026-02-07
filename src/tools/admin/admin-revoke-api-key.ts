@@ -8,10 +8,7 @@ import { revokeApiKeyByName, userExists, listApiKeysForUser, logAdminAction } fr
 import { validateUserId, validateApiKeyName } from '../validators.js';
 import { formatSuccess, formatError, createToolResponse, ToolError, ErrorCode } from '../errors.js';
 import { requireAdmin } from './guards.js';
-
-interface ToolHandlerExtra {
-  sessionId?: string;
-}
+import type { ToolHandlerExtra } from '../../auth/identity.js';
 
 export const adminRevokeApiKeyInputSchema = {
   user_id: z.string().describe('The user ID whose API key should be revoked'),
@@ -37,7 +34,7 @@ export function registerAdminRevokeApiKeyTool(): void {
     },
     async ({ user_id, api_key_name }, extra: ToolHandlerExtra) => {
       // Check admin authorization
-      const adminCheck = requireAdmin(extra.sessionId);
+      const adminCheck = await requireAdmin(extra);
       if (!adminCheck.authorized) {
         return adminCheck.errorResponse;
       }
