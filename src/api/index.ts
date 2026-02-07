@@ -16,6 +16,12 @@ const router = Router();
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+// Stricter rate limiting for waitlist submissions
+const WAITLIST_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const WAITLIST_RATE_LIMIT_MAX_REQUESTS = 5;
+const waitlistRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
 const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Periodic cleanup of expired rate limit entries
@@ -28,8 +34,14 @@ const apiRateLimitCleanupInterval = setInterval(() => {
       purged++;
     }
   }
+  for (const [key, data] of waitlistRateLimitMap) {
+    if (now > data.resetTime) {
+      waitlistRateLimitMap.delete(key);
+      purged++;
+    }
+  }
   if (purged > 0 && process.env.LOG_LEVEL === 'debug') {
-    console.log(`[ratelimit] Purged ${purged} expired entries from API rate limit map`);
+    console.log(`[ratelimit] Purged ${purged} expired entries from rate limit maps`);
   }
 }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
 apiRateLimitCleanupInterval.unref(); // Don't keep process alive for cleanup
@@ -143,8 +155,40 @@ router.get('/auth/me', rateLimiter, async (req: Request, res: Response): Promise
   }
 });
 
-// Public endpoint — no auth required, rate limiting only
-router.use('/waitlist', rateLimiter, waitlistRouter);
+/**
+ * Stricter rate limiter for waitlist submissions (5 per 15 minutes per IP)
+ */
+function waitlistRateLimiter(req: Request, res: Response, next: NextFunction): void {
+  const clientId = req.ip || 'unknown';
+  const now = Date.now();
+
+  let clientData = waitlistRateLimitMap.get(clientId);
+
+  if (!clientData || now > clientData.resetTime) {
+    clientData = { count: 1, resetTime: now + WAITLIST_RATE_LIMIT_WINDOW_MS };
+    waitlistRateLimitMap.set(clientId, clientData);
+  } else {
+    clientData.count++;
+  }
+
+  res.setHeader('X-RateLimit-Limit', WAITLIST_RATE_LIMIT_MAX_REQUESTS);
+  res.setHeader('X-RateLimit-Remaining', Math.max(0, WAITLIST_RATE_LIMIT_MAX_REQUESTS - clientData.count));
+  res.setHeader('X-RateLimit-Reset', Math.ceil(clientData.resetTime / 1000));
+
+  if (clientData.count > WAITLIST_RATE_LIMIT_MAX_REQUESTS) {
+    res.status(429).json({
+      success: false,
+      error: 'Too many waitlist submissions. Please try again later.',
+      code: 'RATE_LIMITED',
+    });
+    return;
+  }
+
+  next();
+}
+
+// Public endpoint — no auth required, with stricter rate limiting
+router.use('/waitlist', waitlistRateLimiter, waitlistRouter);
 
 // Apply auth and rate limiting to all /api/context routes
 router.use('/context', rateLimiter, authMiddleware, contextRouter);
