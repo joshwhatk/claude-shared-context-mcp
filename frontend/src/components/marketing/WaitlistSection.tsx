@@ -10,6 +10,7 @@ const LOGIN_OPTIONS = [
   { value: 'github', label: 'GitHub' },
   { value: 'microsoft', label: 'Microsoft' },
   { value: 'apple', label: 'Apple' },
+  { value: 'email', label: 'Email/Password' },
 ];
 
 export function WaitlistSection() {

@@ -166,7 +166,7 @@ const MAX_NAME_LENGTH = 100;
 const NAME_PATTERN = /^[a-zA-ZÀ-ÖØ-öø-ÿ\s\-']+$/;
 
 // Valid preferred login providers
-const VALID_PREFERRED_LOGINS = ['google', 'github', 'microsoft', 'apple'] as const;
+const VALID_PREFERRED_LOGINS = ['google', 'github', 'microsoft', 'apple', 'email'] as const;
 
 /**
  * Validate a name (first or last) for waitlist
