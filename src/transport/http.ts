@@ -90,6 +90,9 @@ export function createApp(): express.Application {
   app.get('/health', healthCheckHandler);
 
   // Well-known OAuth metadata endpoints (public, no auth)
+  // The /mcp subpath handler ensures the `resource` field matches the MCP endpoint URL
+  // per RFC 9728 (clients try path-specific PRM first, then fall back to root)
+  app.get('/.well-known/oauth-protected-resource/mcp', protectedResourceHandlerClerk());
   app.get('/.well-known/oauth-protected-resource', protectedResourceHandlerClerk());
   app.get('/.well-known/oauth-authorization-server', authServerMetadataHandlerClerk);
 
