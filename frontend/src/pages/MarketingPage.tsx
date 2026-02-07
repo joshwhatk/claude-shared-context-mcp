@@ -2,6 +2,7 @@ import { MarketingNav } from '../components/marketing/MarketingNav';
 import { HeroSection } from '../components/marketing/HeroSection';
 import { ProblemSection } from '../components/marketing/ProblemSection';
 import { HowItWorksSection } from '../components/marketing/HowItWorksSection';
+import { UseCasesSection } from '../components/marketing/UseCasesSection';
 
 export function MarketingPage() {
   return (
@@ -10,6 +11,7 @@ export function MarketingPage() {
       <HeroSection />
       <ProblemSection />
       <HowItWorksSection />
+      <UseCasesSection />
     </div>
   );
 }
