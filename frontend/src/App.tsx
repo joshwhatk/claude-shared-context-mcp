@@ -14,6 +14,8 @@ import { AdminPage } from './pages/AdminPage';
 import { KeysPage } from './pages/KeysPage';
 import { SetupPage } from './pages/SetupPage';
 import { MarketingPage } from './pages/MarketingPage';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
+import { TermsOfUsePage } from './pages/TermsOfUsePage';
 
 /**
  * Protected route wrapper - requires Clerk sign-in
@@ -86,8 +88,10 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Public marketing page */}
+      {/* Public pages */}
       <Route path="/" element={<MarketingPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms-of-use" element={<TermsOfUsePage />} />
       <Route
         path="/login"
         element={
