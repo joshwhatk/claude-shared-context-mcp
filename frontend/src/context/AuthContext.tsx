@@ -82,10 +82,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (err) {
         console.error('[auth] Failed to fetch user info:', err);
         setState({
-          isAuthenticated: true,
+          isAuthenticated: false,
           isLoading: false,
           isAdmin: false,
-          email: clerkUser?.primaryEmailAddress?.emailAddress ?? null,
+          email: null,
           userId: null,
           error: err instanceof Error ? err.message : 'Failed to load user info',
         });
