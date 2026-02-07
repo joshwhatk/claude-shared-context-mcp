@@ -176,7 +176,7 @@ export function EditPage() {
             </svg>
           </button>
           <h1 className="text-xl font-semibold text-gray-900">
-            {isNew ? 'New Item' : 'Edit Item'}
+            {isNew ? 'New Item' : `Edit ${existingKey}`}
           </h1>
         </div>
 
