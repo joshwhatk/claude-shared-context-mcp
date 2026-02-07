@@ -83,7 +83,7 @@ export function WaitlistSection() {
     return (
       <section id="get-started" className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="max-w-md mx-auto text-center">
-          <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-6">
+          <div className="animate-scale-in w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-6">
             <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>

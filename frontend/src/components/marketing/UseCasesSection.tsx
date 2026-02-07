@@ -74,13 +74,15 @@ export function UseCasesSection() {
           </div>
         </div>
 
-        {/* Tab content */}
-        <div className="mt-8">
+        {/* Tab content with slide transition */}
+        <div className="mt-8 relative overflow-hidden">
           {USE_CASES.map((uc, i) => (
             <div
               key={i}
-              className={`transition-opacity duration-200 ${
-                activeTab === i ? 'opacity-100' : 'hidden opacity-0'
+              className={`transition-all duration-300 ease-out ${
+                activeTab === i
+                  ? 'opacity-100 translate-x-0'
+                  : 'absolute inset-0 opacity-0 translate-x-4 pointer-events-none'
               }`}
             >
               <div className="max-w-2xl">
