@@ -10,7 +10,7 @@ import type { ContextEntry } from '../api/client';
 import { usePageTitle } from '../hooks/usePageTitle';
 
 export function ListPage() {
-  usePageTitle('Context Items');
+  usePageTitle('My Context');
   const posthog = usePostHog();
   const [items, setItems] = useState<ContextEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,7 +91,7 @@ export function ListPage() {
     <div>
       {/* Header with search and new button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Context Items</h1>
+        <h1 className="text-xl font-semibold text-gray-900">My Context</h1>
         <div className="flex items-center gap-3">
           {/* Search input */}
           <div className="relative flex-1 sm:flex-none">
