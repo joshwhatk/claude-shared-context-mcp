@@ -30,6 +30,12 @@ export function Layout({ children }: LayoutProps) {
 
             {/* Navigation and user menu */}
             <div className="flex items-center gap-4">
+              <Link
+                to="/keys"
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                API Keys
+              </Link>
               {isAdmin && (
                 <Link
                   to="/admin"

@@ -7,6 +7,7 @@ import { getAuth, createClerkClient } from '@clerk/express';
 import { getUserByClerkId, findOrProvisionClerkUser } from '../db/queries.js';
 import contextRouter from './context.js';
 import adminRouter from './admin.js';
+import keysRouter from './keys.js';
 
 const router = Router();
 
@@ -148,6 +149,9 @@ router.get('/auth/me', rateLimiter, async (req: Request, res: Response): Promise
 
 // Apply auth and rate limiting to all /api/context routes
 router.use('/context', rateLimiter, authMiddleware, contextRouter);
+
+// Apply auth and rate limiting to all /api/keys routes (self-service)
+router.use('/keys', rateLimiter, authMiddleware, keysRouter);
 
 // Apply auth and rate limiting to all /api/admin routes
 router.use('/admin', rateLimiter, authMiddleware, adminRouter);

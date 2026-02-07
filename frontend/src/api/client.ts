@@ -200,6 +200,37 @@ class ApiClient {
   }
 
   // ============================================
+  // Self-Service API Key Methods
+  // ============================================
+
+  /**
+   * List own API keys
+   */
+  async listMyKeys(): Promise<{ keys: AdminApiKey[]; count: number }> {
+    return this.fetch<{ keys: AdminApiKey[]; count: number }>('/keys');
+  }
+
+  /**
+   * Create a new API key for self
+   */
+  async createMyKey(name: string): Promise<{ apiKey: string; keyName: string }> {
+    return this.fetch<{ apiKey: string; keyName: string }>('/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  /**
+   * Revoke own API key by name
+   */
+  async revokeMyKey(keyName: string): Promise<{ keyName: string; revoked: boolean }> {
+    return this.fetch<{ keyName: string; revoked: boolean }>(
+      `/keys/${encodeURIComponent(keyName)}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ============================================
   // Admin API Methods
   // ============================================
 
