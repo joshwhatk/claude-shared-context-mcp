@@ -6,8 +6,9 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { server as mcpServer } from '../server.js';
 import { testConnection } from '../db/client.js';
-import { getUserByApiKey, hashApiKey, getUserByClerkId, findOrProvisionClerkUser } from '../db/queries.js';
+import { getUserByApiKey, hashApiKey } from '../db/queries.js';
 import { setSessionContext, clearSessionContext, clearAllSessionContexts } from '../auth/session-context.js';
+import { provisionClerkUser } from '../auth/provision.js';
 import { registerAllTools } from '../tools/index.js';
 import apiRouter from '../api/index.js';
 import { clerkMiddleware, getAuth } from '@clerk/express';
@@ -119,21 +120,7 @@ async function clerkAutoProvision(req: Request, _res: Response, next: NextFuncti
       return next();
     }
 
-    const clerkId = auth.userId;
-    const existingUser = await getUserByClerkId(clerkId);
-
-    if (!existingUser) {
-      // Auto-provision: look up email from Clerk
-      const { createClerkClient } = await import('@clerk/express');
-      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
-      const clerkUser = await clerk.users.getUser(clerkId);
-      const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@clerk.user`;
-      const isAdmin = email === process.env.ADMIN_EMAIL;
-
-      await findOrProvisionClerkUser(clerkId, email, isAdmin);
-      console.log('[clerk] Provisioned user:', email, isAdmin ? '(admin)' : '');
-    }
-
+    await provisionClerkUser(auth.userId);
     next();
   } catch (error) {
     console.error('[clerk] Auto-provision error:', error);

@@ -3,8 +3,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { getAuth, createClerkClient } from '@clerk/express';
-import { getUserByClerkId, findOrProvisionClerkUser } from '../db/queries.js';
+import { getAuth } from '@clerk/express';
+import { provisionClerkUser } from '../auth/provision.js';
 import contextRouter from './context.js';
 import adminRouter from './admin.js';
 import keysRouter from './keys.js';
@@ -37,18 +37,7 @@ async function authMiddleware(
   }
 
   try {
-    let user = await getUserByClerkId(clerkAuth.userId);
-
-    if (!user) {
-      // Auto-provision: Clerk invitation-only means only invited users reach here
-      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
-      const clerkUser = await clerk.users.getUser(clerkAuth.userId);
-      const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkAuth.userId}@clerk.user`;
-      const isAdmin = email === process.env.ADMIN_EMAIL;
-
-      user = await findOrProvisionClerkUser(clerkAuth.userId, email, isAdmin);
-      console.log('[api] Provisioned Clerk user:', email, isAdmin ? '(admin)' : '');
-    }
+    const user = await provisionClerkUser(clerkAuth.userId);
 
     // Attach user info to request
     req.authenticatedUserId = user.id;
@@ -115,18 +104,7 @@ router.get('/auth/me', rateLimiter, async (req: Request, res: Response): Promise
   }
 
   try {
-    let user = await getUserByClerkId(clerkAuth.userId);
-
-    if (!user) {
-      // Auto-provision on first visit
-      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
-      const clerkUser = await clerk.users.getUser(clerkAuth.userId);
-      const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkAuth.userId}@clerk.user`;
-      const isAdmin = email === process.env.ADMIN_EMAIL;
-
-      user = await findOrProvisionClerkUser(clerkAuth.userId, email, isAdmin);
-      console.log('[api] Provisioned Clerk user via /auth/me:', email, isAdmin ? '(admin)' : '');
-    }
+    const user = await provisionClerkUser(clerkAuth.userId);
 
     res.json({
       success: true,
