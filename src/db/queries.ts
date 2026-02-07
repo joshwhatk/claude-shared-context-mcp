@@ -236,6 +236,45 @@ export async function getUserByClerkId(clerkId: string): Promise<User | null> {
 }
 
 /**
+ * Look up a user by email
+ * @returns The user or null if not found
+ */
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const result = await query<User>(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Find or provision a Clerk user.
+ * 1. If a user with this clerk_id exists, return it.
+ * 2. If a user with the same email exists (legacy), link the Clerk ID and return it.
+ * 3. Otherwise, create a new user.
+ */
+export async function findOrProvisionClerkUser(
+  clerkId: string,
+  email: string,
+  isAdmin: boolean
+): Promise<User> {
+  // 1. Already linked
+  const byClerkId = await getUserByClerkId(clerkId);
+  if (byClerkId) return byClerkId;
+
+  // 2. Legacy user with same email — link to Clerk
+  const byEmail = await getUserByEmail(email);
+  if (byEmail) {
+    await linkClerkId(byEmail.id, clerkId);
+    console.log('[clerk] Linked existing user to Clerk:', byEmail.id, email);
+    return { ...byEmail, clerk_id: clerkId, auth_provider: 'clerk' };
+  }
+
+  // 3. Brand new user
+  return createClerkUser(clerkId, email, isAdmin);
+}
+
+/**
  * Create a new user from Clerk OAuth
  * @returns The created user
  */
@@ -244,11 +283,11 @@ export async function createClerkUser(
   email: string,
   isAdmin: boolean
 ): Promise<User> {
-  // Use clerk_<id> as the user ID for Clerk-provisioned users
   const userId = `clerk_${clerkId}`;
   const result = await query<User>(
     `INSERT INTO users (id, email, auth_provider, clerk_id, is_admin, created_at, updated_at)
      VALUES ($1, $2, 'clerk', $3, $4, NOW(), NOW())
+     ON CONFLICT (clerk_id) DO UPDATE SET updated_at = NOW()
      RETURNING *`,
     [userId, email, clerkId, isAdmin]
   );

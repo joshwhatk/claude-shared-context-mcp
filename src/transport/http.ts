@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { server as mcpServer } from '../server.js';
 import { testConnection } from '../db/client.js';
-import { getUserByClerkId, createClerkUser } from '../db/queries.js';
+import { getUserByClerkId, findOrProvisionClerkUser } from '../db/queries.js';
 import { registerAllTools } from '../tools/index.js';
 import apiRouter from '../api/index.js';
 import { clerkMiddleware, getAuth } from '@clerk/express';
@@ -112,8 +112,8 @@ async function clerkAutoProvision(req: Request, _res: Response, next: NextFuncti
       const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@clerk.user`;
       const isAdmin = email === process.env.ADMIN_EMAIL;
 
-      await createClerkUser(clerkId, email, isAdmin);
-      console.log('[clerk] Auto-provisioned user:', email, isAdmin ? '(admin)' : '');
+      await findOrProvisionClerkUser(clerkId, email, isAdmin);
+      console.log('[clerk] Provisioned user:', email, isAdmin ? '(admin)' : '');
     }
 
     next();

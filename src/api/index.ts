@@ -4,7 +4,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { getAuth, createClerkClient } from '@clerk/express';
-import { getUserByClerkId, createClerkUser } from '../db/queries.js';
+import { getUserByClerkId, findOrProvisionClerkUser } from '../db/queries.js';
 import contextRouter from './context.js';
 import adminRouter from './admin.js';
 
@@ -45,8 +45,8 @@ async function authMiddleware(
       const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkAuth.userId}@clerk.user`;
       const isAdmin = email === process.env.ADMIN_EMAIL;
 
-      user = await createClerkUser(clerkAuth.userId, email, isAdmin);
-      console.log('[api] Auto-provisioned Clerk user:', email, isAdmin ? '(admin)' : '');
+      user = await findOrProvisionClerkUser(clerkAuth.userId, email, isAdmin);
+      console.log('[api] Provisioned Clerk user:', email, isAdmin ? '(admin)' : '');
     }
 
     // Attach user info to request
@@ -123,8 +123,8 @@ router.get('/auth/me', rateLimiter, async (req: Request, res: Response): Promise
       const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkAuth.userId}@clerk.user`;
       const isAdmin = email === process.env.ADMIN_EMAIL;
 
-      user = await createClerkUser(clerkAuth.userId, email, isAdmin);
-      console.log('[api] Auto-provisioned Clerk user via /auth/me:', email, isAdmin ? '(admin)' : '');
+      user = await findOrProvisionClerkUser(clerkAuth.userId, email, isAdmin);
+      console.log('[api] Provisioned Clerk user via /auth/me:', email, isAdmin ? '(admin)' : '');
     }
 
     res.json({
