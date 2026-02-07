@@ -118,7 +118,8 @@ src/
 │   ├── index.ts          # Main router with Clerk JWT auth middleware
 │   ├── context.ts        # Context CRUD endpoints
 │   ├── keys.ts           # Self-service API key management endpoints
-│   └── admin.ts          # Admin user management endpoints
+│   ├── admin.ts          # Admin user management endpoints
+│   └── waitlist.ts       # Public waitlist signup endpoint (no auth)
 └── transport/
     └── http.ts           # Express HTTP/SSE transport with Clerk OAuth, CORS
 
@@ -126,8 +127,9 @@ frontend/                 # React web application
 ├── src/
 │   ├── main.tsx          # App entry point with ClerkProvider
 │   ├── App.tsx           # Router with Clerk-based route protection
-│   ├── pages/            # 5 pages: Login, List, View, Edit, Admin
-│   ├── components/       # Layout (with UserButton), MarkdownEditor, etc.
+│   ├── pages/            # Login, Marketing, List, View, Edit, Admin, Setup, Keys
+│   ├── components/       # Layout, MarkdownEditor, marketing/ (nav, hero, sections)
+│   ├── hooks/            # usePageTitle, useScrollAnimation
 │   ├── context/          # AuthContext wrapping Clerk hooks + backend admin check
 │   └── api/              # API client using Clerk JWT tokens
 ├── package.json
@@ -252,6 +254,22 @@ admin_audit_log (
 INDEX: idx_admin_audit_log_admin_user_id ON admin_user_id
 ```
 
+**Waitlist table (public, no auth):**
+```sql
+waitlist (
+  id SERIAL PRIMARY KEY,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  preferred_login TEXT NOT NULL,
+  agreed_to_contact BOOLEAN NOT NULL DEFAULT true,
+  agreed_to_terms BOOLEAN NOT NULL DEFAULT true,
+  consent_text TEXT NOT NULL,       -- exact disclaimer copy for legal record
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+)
+INDEX: idx_waitlist_email ON email
+```
+
 ## MCP Tools Exposed
 
 **Core Tools (5):**
@@ -273,6 +291,9 @@ All tools return standardized responses:
 - Error: `{ success: false, error: string, code: string }`
 
 ## REST API Endpoints
+
+**Public (no auth):**
+- `POST /api/waitlist` - Join the waitlist (rate-limited, stores consent record)
 
 **Authentication:**
 - `GET /api/auth/me` - Get current user info (from Clerk JWT)
@@ -305,12 +326,18 @@ All tools return standardized responses:
 
 ## Frontend Pages
 
+**Public:**
+- `/` - Marketing landing page with waitlist form
 - `/login` - Clerk OAuth sign-in
-- `/` - List all context entries with search
-- `/view/:key` - Read-only view of context entry
-- `/edit/:key` - Edit existing context entry
-- `/new` - Create new context entry
-- `/admin` - Admin panel for user management (admin-only)
+
+**App (authenticated, `/app/*`):**
+- `/app` - List all context entries with search
+- `/app/view/:key` - Read-only view of context entry
+- `/app/edit/:key` - Edit existing context entry
+- `/app/new` - Create new context entry
+- `/app/setup` - Setup instructions for MCP clients
+- `/app/keys` - Self-service API key management
+- `/app/admin` - Admin panel for user management (admin-only)
 
 ## Critical Security Requirements
 
