@@ -38,14 +38,9 @@ export function HeroSection() {
           </div>
 
           {/* Visual — animated chat nodes */}
-          <div className="relative hidden lg:block" aria-hidden="true">
+          <div className="relative" aria-hidden="true">
             <HeroVisual />
           </div>
-        </div>
-
-        {/* Mobile visual (simplified) */}
-        <div className="mt-12 lg:hidden" aria-hidden="true">
-          <HeroVisualMobile />
         </div>
       </div>
     </section>
@@ -104,28 +99,3 @@ function HeroVisual() {
   );
 }
 
-function HeroVisualMobile() {
-  return (
-    <div className="flex flex-col items-center gap-3">
-      {/* Chat nodes */}
-      {['Chat 1', 'Chat 2', 'Chat 3'].map((label, i) => (
-        <div
-          key={label}
-          className={`animate-fade-in-up flex items-center gap-3`}
-          style={{ animationDelay: `${i * 150}ms` }}
-        >
-          <div className="px-6 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">
-            {label}
-          </div>
-          <svg className="h-4 w-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      ))}
-      {/* Central node */}
-      <div className="animate-fade-in-up mt-2 px-8 py-3 bg-blue-50 border border-blue-300 rounded-xl text-sm font-medium text-blue-700" style={{ animationDelay: '500ms' }}>
-        Shared Context
-      </div>
-    </div>
-  );
-}
