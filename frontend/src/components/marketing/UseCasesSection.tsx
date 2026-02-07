@@ -3,36 +3,36 @@ import { useScrollAnimation } from '../../hooks/useScrollAnimation';
 
 const USE_CASES = [
   {
-    tab: 'Repeatable Templates',
-    title: 'Turn one-off work into repeatable assets',
+    tab: 'Repeatable Workflows',
+    title: 'Turn one-off work into something you can reuse forever',
     description:
-      'You write a perfect PR description template, a thorough code review checklist, or a commit message format. Instead of losing it when the chat ends, save it to Shared Context. Next time you need it, Claude already knows the format — just ask.',
+      'You write the perfect email template, a thorough code review checklist, or a weekly report format. Instead of losing it when the chat ends, you save it to Shared Context with instructions for how Claude should use it. Then you point a Project at that key, and every new chat in that Project produces consistent output, no setup required. Over time, you refine the template based on results. It gets better every week.',
     example:
-      '"Save my PR template to shared context" → Claude writes it once, uses it every time.',
+      '"Save my client update email template with instructions" \u2192 Next week: "Write this week\'s client update" \u2192 Claude already knows the format, the tone, and your preferences.',
   },
   {
-    tab: 'Multi-Phase Projects',
-    title: 'Keep project momentum across conversations',
+    tab: 'Multi-Angle Thinking',
+    title: 'Spread your thinking across as many conversations as you need',
     description:
-      'Big projects span many conversations. You make architectural decisions in one chat, implement in another, debug in a third. Shared Context lets you save decisions and progress notes so every new chat starts with full project awareness.',
+      'Big ideas don\'t fit in a single chat. You generate a document in one conversation, critique it from the perspective of an expert communicator in another, then produce the final deliverable in a third. Shared Context holds the source material steady while you approach it from every angle. You\'re no longer constrained by how much a single conversation can hold.',
     example:
-      '"Save our API design decisions" → New chats reference them automatically.',
-  },
-  {
-    tab: 'Bridge to Code',
-    title: 'A staging area between chat and codebase',
-    description:
-      'Not every insight belongs in a code comment or CLAUDE.md. Shared Context is the middle ground — more structured than a chat, more flexible than code. Store coding conventions, API patterns, or team agreements that Claude should always follow.',
-    example:
-      '"Save our error handling conventions" → Claude applies them in every chat.',
+      'Chat 1: "Generate my project proposal and save it." Chat 2: "Read my proposal and critique it as a skeptical investor." Chat 3: "Create the presentation deck based on the revised proposal."',
   },
   {
     tab: 'Living Knowledge Base',
-    title: 'Build institutional knowledge that grows',
+    title: 'Build a personal reference library that grows with you',
     description:
-      'Over time, your Shared Context becomes a living reference. Update entries as patterns evolve, add new ones as you learn, and deprecate what no longer applies. It\'s version-controlled and auditable — a knowledge base that keeps up with your work.',
+      'You analyze your calendar and set goals for the week. You save that summary to Shared Context. Later, from any conversation, you can pull it up, ask about your priorities, adjust the plan, or use it as input for something else entirely. Over time, these entries accumulate — project decisions, workflow preferences, templates, conventions, reference material. A knowledge base that\'s always current because you keep it current.',
     example:
-      '"Update the deployment checklist with the new monitoring step" → Done.',
+      'Monday: "Analyze my calendar and save my weekly plan." Wednesday: "What did I say my priorities were this week?" Friday: "Update the weekly plan with what actually happened."',
+  },
+  {
+    tab: 'Developer Workflows',
+    title: 'Persistent context for code decisions, conventions, and patterns',
+    description:
+      'Save your PR description template, your error handling conventions, or your architectural decisions. Every chat in every project can reference them. Unlike CLAUDE.md, these aren\'t tied to a single codebase. Unlike Project Instructions, Claude can update them as patterns evolve. It\'s the middle ground between a chat that forgets and a codebase that\'s too rigid.',
+    example:
+      '"Save our API design decisions" \u2192 New chats across any project reference them automatically. "Update the error handling conventions based on what we just learned" \u2192 Done.',
   },
 ];
 
@@ -52,7 +52,7 @@ export function UseCasesSection() {
           Use cases
         </h2>
         <p className="mt-4 text-lg text-gray-600 max-w-2xl">
-          Shared Context adapts to how you work. Here are a few ways people use it.
+          Shared Context adapts to how you work. Here are some real examples.
         </p>
 
         {/* Tabs */}

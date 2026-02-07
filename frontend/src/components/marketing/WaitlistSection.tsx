@@ -91,7 +91,8 @@ export function WaitlistSection() {
           <h2 className="text-2xl font-bold text-gray-900">You're on the list!</h2>
           <p className="mt-3 text-gray-600">
             We'll send a confirmation to <strong>{email}</strong> and
-            let you know when your spot is ready.
+            let you know when your spot is ready. In the meantime, keep
+            building with Claude — you'll have plenty to save once you're in.
           </p>
         </div>
       </section>
@@ -110,7 +111,8 @@ export function WaitlistSection() {
           Get early access
         </h2>
         <p className="mt-3 text-gray-600 text-center">
-          Join the waitlist and we'll let you know when your spot is ready.
+          We're onboarding a small group each week. Join the waitlist and
+          we'll let you know when your spot is ready.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -221,7 +223,7 @@ export function WaitlistSection() {
                      disabled:opacity-50 disabled:cursor-not-allowed
                      focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           >
-            {isSubmitting ? 'Joining...' : 'Join the Waitlist'}
+            {isSubmitting ? 'Joining...' : 'Get Early Access'}
           </button>
         </form>
       </div>

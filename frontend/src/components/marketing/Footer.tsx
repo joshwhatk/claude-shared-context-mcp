@@ -11,7 +11,7 @@ export function Footer() {
             className="text-gray-500 hover:text-gray-700 underline"
           >
             Model Context Protocol
-          </a>
+          </a>, an open standard by Anthropic.
         </p>
       </div>
     </footer>

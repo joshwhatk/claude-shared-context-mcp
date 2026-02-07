@@ -11,28 +11,28 @@ export function HeroSection() {
           {/* Copy */}
           <div>
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight tracking-tight">
-              Persistent context across Claude conversations
+              Take control of what AI remembers.
             </h1>
             <p className="mt-6 text-lg text-gray-600 leading-relaxed max-w-lg">
-              Save decisions, templates, and project knowledge once. Every new
-              Claude chat picks up right where you left off — no more
-              re-explaining your stack, your style, or your intent.
+              Stop re-explaining yourself every time you open a new chat. Shared
+              Context is your personal knowledge base that Claude can read and
+              write, so every conversation starts informed, not from scratch.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <button
                 onClick={scrollToGetStarted}
                 className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
               >
-                Join the Waitlist
+                Get Early Access
               </button>
               <button
                 onClick={() => {
-                  const el = document.getElementById('how-it-works');
+                  const el = document.getElementById('how-its-different');
                   if (el) el.scrollIntoView({ behavior: 'smooth' });
                 }}
                 className="px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors cursor-pointer"
               >
-                How it works
+                See how it's different
               </button>
             </div>
           </div>
