@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 const NAV_LINKS = [
+  { label: "How it's different", href: '#how-its-different' },
   { label: 'How it works', href: '#how-it-works' },
   { label: 'Use cases', href: '#use-cases' },
   { label: 'Get started', href: '#get-started' },
@@ -36,7 +37,7 @@ export function MarketingNav() {
 
   // Track active section
   useEffect(() => {
-    const sectionIds = ['how-it-works', 'use-cases', 'get-started'];
+    const sectionIds = ['how-its-different', 'how-it-works', 'use-cases', 'get-started'];
     const observers: IntersectionObserver[] = [];
 
     sectionIds.forEach((id) => {
