@@ -8,6 +8,7 @@ import { provisionClerkUser } from '../auth/provision.js';
 import contextRouter from './context.js';
 import adminRouter from './admin.js';
 import keysRouter from './keys.js';
+import waitlistRouter from './waitlist.js';
 
 const router = Router();
 
@@ -141,6 +142,9 @@ router.get('/auth/me', rateLimiter, async (req: Request, res: Response): Promise
     });
   }
 });
+
+// Public endpoint — no auth required, rate limiting only
+router.use('/waitlist', rateLimiter, waitlistRouter);
 
 // Apply auth and rate limiting to all /api/context routes
 router.use('/context', rateLimiter, authMiddleware, contextRouter);
