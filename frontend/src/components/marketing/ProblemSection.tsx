@@ -1,8 +1,17 @@
+import { useScrollAnimation } from '../../hooks/useScrollAnimation';
+
 export function ProblemSection() {
+  const { ref, isVisible } = useScrollAnimation();
+
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
       <div className="max-w-6xl mx-auto">
-        <div className="max-w-2xl">
+        <div
+          ref={ref}
+          className={`max-w-2xl transition-all duration-700 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+          }`}
+        >
           <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
             Every new conversation starts from zero
           </h2>

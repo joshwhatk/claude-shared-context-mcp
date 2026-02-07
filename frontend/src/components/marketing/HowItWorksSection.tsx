@@ -1,3 +1,5 @@
+import { useScrollAnimation } from '../../hooks/useScrollAnimation';
+
 const STEPS = [
   {
     title: 'Nail it down, save it',
@@ -31,21 +33,34 @@ const STEPS = [
   },
 ];
 
+const DELAY_CLASSES = ['', 'delay-100', 'delay-200'] as const;
+
 export function HowItWorksSection() {
+  const { ref, isVisible } = useScrollAnimation();
+
   return (
     <section id="how-it-works" className="py-20 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
+      <div className="max-w-6xl mx-auto" ref={ref}>
+        <h2 className={`text-3xl font-bold text-gray-900 tracking-tight transition-all duration-700 ${
+          isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+        }`}>
           How it works
         </h2>
-        <p className="mt-4 text-lg text-gray-600 max-w-2xl">
+        <p className={`mt-4 text-lg text-gray-600 max-w-2xl transition-all duration-700 delay-75 ${
+          isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+        }`}>
           Shared Context uses the Model Context Protocol (MCP) to give Claude
           read-write access to your personal knowledge base.
         </p>
 
         <div className="mt-12 grid md:grid-cols-3 gap-8">
           {STEPS.map((step, i) => (
-            <div key={i} className="flex flex-col">
+            <div
+              key={i}
+              className={`flex flex-col transition-all duration-700 ${DELAY_CLASSES[i]} ${
+                isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+              }`}
+            >
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
                   {step.icon}

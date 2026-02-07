@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useScrollAnimation } from '../../hooks/useScrollAnimation';
 
 const USE_CASES = [
   {
@@ -37,10 +38,16 @@ const USE_CASES = [
 
 export function UseCasesSection() {
   const [activeTab, setActiveTab] = useState(0);
+  const { ref, isVisible } = useScrollAnimation();
 
   return (
     <section id="use-cases" className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
-      <div className="max-w-6xl mx-auto">
+      <div
+        ref={ref}
+        className={`max-w-6xl mx-auto transition-all duration-700 ${
+          isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+        }`}
+      >
         <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
           Use cases
         </h2>

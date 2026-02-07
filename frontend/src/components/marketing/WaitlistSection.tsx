@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
+import { useScrollAnimation } from '../../hooks/useScrollAnimation';
 
 const CONSENT_TEXT =
   'By signing up, I agree to be contacted via email with a confirmation and when a spot is available, and I agree to the Terms of Use and Privacy Policy.';
@@ -13,6 +14,7 @@ const LOGIN_OPTIONS = [
 
 export function WaitlistSection() {
   const posthog = usePostHog();
+  const { ref: sectionRef, isVisible } = useScrollAnimation();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -98,7 +100,12 @@ export function WaitlistSection() {
 
   return (
     <section id="get-started" className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
-      <div className="max-w-md mx-auto">
+      <div
+        ref={sectionRef}
+        className={`max-w-md mx-auto transition-all duration-700 ${
+          isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+        }`}
+      >
         <h2 className="text-3xl font-bold text-gray-900 tracking-tight text-center">
           Get early access
         </h2>
