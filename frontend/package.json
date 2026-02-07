@@ -13,6 +13,7 @@
     "@clerk/clerk-react": "^5.60.0",
     "@tailwindcss/typography": "^0.5.19",
     "@uiw/react-md-editor": "^4.0.0",
+    "posthog-js": "^1.342.1",
     "prism-react-renderer": "^2.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
