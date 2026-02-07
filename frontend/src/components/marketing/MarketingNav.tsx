@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const NAV_LINKS = [
@@ -89,7 +89,7 @@ export function MarketingNav({ minimal = false }: MarketingNavProps) {
               to="/"
               className="text-lg font-semibold text-gray-900 hover:text-gray-700 transition-colors"
             >
-              Shared Context
+              Shared Context MCP
             </Link>
           ) : (
             <a

@@ -30,7 +30,7 @@ export function ProblemSection() {
             limits where your context can go.
           </p>
           <p className="mt-4 text-lg text-gray-600 leading-relaxed">
-            Shared Context changes that. It's a read-write knowledge base that
+            <strong>Shared Context MCP changes that.</strong> It's a read-write knowledge base that
             you control. You decide what gets saved. You decide how it's
             structured. You decide when it gets updated. And every conversation,
             whether it's your first or your fiftieth, has access to all of it.

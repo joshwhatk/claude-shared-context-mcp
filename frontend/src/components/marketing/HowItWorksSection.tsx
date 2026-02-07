@@ -4,7 +4,7 @@ const STEPS = [
   {
     title: 'Save what matters',
     description:
-      'When Claude produces something worth keeping, whether it\'s a decision record, a reusable template, a set of conventions, or a weekly plan, you tell it to save that to Shared Context. You choose the key, the structure, and the level of detail. Nothing is summarized or discarded unless you say so.',
+      'When Claude produces something worth keeping, whether it\'s a decision record, a reusable template, a set of conventions, or a weekly plan, <strong>you tell it to save that to Shared Context.</strong> You choose the key, the structure, and the level of detail. Nothing is summarized or discarded unless you say so.',
     icon: (
       <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -14,7 +14,7 @@ const STEPS = [
   {
     title: 'Pick up anywhere',
     description:
-      'Open a brand new conversation. Open five at once. Claude can read your saved context instantly in any of them. No copy-paste. No re-explaining. You can even approach the same material from completely different angles in parallel — one chat to generate, another to critique, another to refine.',
+      'Open a brand new conversation. Open five at once. <strong>Claude can read your saved context instantly in any of them.</strong> No copy-paste. No re-explaining. You can even approach the same material from completely different angles in parallel — one chat to generate, another to critique, another to refine.',
     icon: (
       <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -24,7 +24,7 @@ const STEPS = [
   {
     title: 'Build over time',
     description:
-      'Your context entries are living documents. Update them as your projects evolve, add new ones as you learn, deprecate what no longer applies. Over weeks and months, you\'re building a personal knowledge base that makes every future conversation smarter than the last.',
+      'Your context entries are living documents. <strong>Update them as your projects evolve, add new ones as you learn, remove what no longer applies.</strong> Over weeks and months, you\'re building a personal knowledge base that makes every future conversation smarter than the last.',
     icon: (
       <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -70,7 +70,7 @@ export function HowItWorksSection() {
                 <span className="text-sm font-medium text-blue-600">Step {i + 1}</span>
               </div>
               <h3 className="text-lg font-semibold text-gray-900">{step.title}</h3>
-              <p className="mt-2 text-gray-600 leading-relaxed">{step.description}</p>
+              <p className="mt-2 text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: step.description }} />
             </div>
           ))}
         </div>

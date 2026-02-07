@@ -15,7 +15,7 @@ export function HeroSection() {
             </h1>
             <p className="mt-6 text-lg text-gray-600 leading-relaxed max-w-lg">
               Stop re-explaining yourself every time you open a new chat. Shared
-              Context is your personal knowledge base that Claude can read and
+              Context MCP is your personal knowledge base that Claude can read and
               write, so every conversation starts informed, not from scratch.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
