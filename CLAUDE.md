@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MCP Shared Context Server - A production-ready Model Context Protocol (MCP) server that enables persistent, shared context across Claude conversations with multi-tenant support. Deployed to Railway with PostgreSQL, exposing 8 MCP tools (5 core + 3 admin) via HTTP/SSE transport with Clerk OAuth, plus a REST API and React web frontend.
+MCP Shared Context Server - A production-ready Model Context Protocol (MCP) server that enables persistent, shared context across Claude conversations with multi-tenant support. Deployed to Railway with PostgreSQL, exposing 10 MCP tools (5 core + 5 admin) via HTTP/SSE transport with Clerk OAuth, plus a REST API and React web frontend.
 
 **Key Features:**
 - 8 MCP tools for context management and admin operations
@@ -92,7 +92,7 @@ src/
 ├── index.ts              # Entry point: env validation, migration, server start, graceful shutdown
 ├── server.ts             # MCP server initialization and configuration
 ├── tools/
-│   ├── index.ts          # Tool registration hub (registers all 8 tools)
+│   ├── index.ts          # Tool registration hub (registers all 10 tools)
 │   ├── read-context.ts   # read_context tool
 │   ├── write-context.ts  # write_context tool (with validation)
 │   ├── delete-context.ts # delete_context tool
@@ -100,20 +100,24 @@ src/
 │   ├── read-all.ts       # read_all_context tool
 │   ├── validators.ts     # Input validation (key format, content size, user ID, email)
 │   ├── errors.ts         # Standardized error handling (ToolError class)
-│   └── admin/            # Admin-only tools (3 tools)
+│   └── admin/            # Admin-only tools (5 tools)
 │       ├── guards.ts     # requireAdmin authorization check
 │       ├── admin-list-users.ts
 │       ├── admin-create-user.ts
-│       └── admin-delete-user.ts
+│       ├── admin-delete-user.ts
+│       ├── admin-create-api-key.ts
+│       └── admin-revoke-api-key.ts
 ├── db/
 │   ├── client.ts         # PostgreSQL connection pool with SSL and retry logic
 │   ├── migrations.ts     # Schema setup using PostgreSQL advisory locks
 │   └── queries.ts        # Parameterized SQL queries with transaction support
 ├── auth/
-│   └── identity.ts       # Unified identity resolver (Clerk authInfo → userId)
+│   ├── identity.ts       # Unified identity resolver (Clerk authInfo → userId)
+│   └── provision.ts      # Shared Clerk auto-provisioning logic
 ├── api/                  # REST API routes
 │   ├── index.ts          # Main router with Clerk JWT auth middleware
 │   ├── context.ts        # Context CRUD endpoints
+│   ├── keys.ts           # Self-service API key management endpoints
 │   └── admin.ts          # Admin user management endpoints
 └── transport/
     └── http.ts           # Express HTTP/SSE transport with Clerk OAuth, CORS
@@ -198,7 +202,7 @@ users (
 INDEX: idx_users_clerk_id ON clerk_id
 ```
 
-**API Keys table (legacy, kept for migration compatibility):**
+**API Keys table:**
 ```sql
 api_keys (
   key_hash TEXT PRIMARY KEY,
@@ -257,10 +261,12 @@ INDEX: idx_admin_audit_log_admin_user_id ON admin_user_id
 4. **list_context(limit?, search?)** - List keys with metadata (default limit: 50, max: 200)
 5. **read_all_context(limit?)** - Get all entries with content (default limit: 20, max: 50)
 
-**Admin Tools (3)** - Require `is_admin=true` on user:
+**Admin Tools (5)** - Require `is_admin=true` on user:
 1. **admin_list_users()** - List all users with context entry count
 2. **admin_create_user(userId, email)** - Create user manually
 3. **admin_delete_user(userId)** - Delete user and cascade delete all their data
+4. **admin_create_api_key(userId, name)** - Create API key for a user
+5. **admin_revoke_api_key(userId, apiKeyName)** - Revoke API key by name
 
 All tools return standardized responses:
 - Success: `{ success: true, data: {...}, timestamp?: string }`
@@ -277,9 +283,18 @@ All tools return standardized responses:
 - `GET /api/context/:key` - Read single entry
 - `DELETE /api/context/:key` - Delete entry
 
+**API Key Management (self-service):**
+- `GET /api/keys` - List own API keys
+- `POST /api/keys` - Create new API key (max 10 per user)
+- `DELETE /api/keys/:keyName` - Revoke own API key by name
+
 **Admin Operations (admin-only):**
 - `GET /api/admin/users` - List all users
+- `POST /api/admin/users` - Create user with initial API key
 - `DELETE /api/admin/users/:userId` - Delete user
+- `GET /api/admin/users/:userId/keys` - List API keys for a user
+- `POST /api/admin/users/:userId/keys` - Create API key for a user (max 10)
+- `DELETE /api/admin/users/:userId/keys/:keyName` - Revoke API key
 
 **MCP OAuth Endpoints:**
 - `GET /.well-known/oauth-protected-resource` - OAuth protected resource metadata
