@@ -83,8 +83,8 @@ export function createApp(): express.Application {
 
   // API key authenticated MCP endpoint for Claude Code CLI
   app.post('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpPostHandler);
-  app.get('/claude-code/mcp', validateApiKeyHeader, mcpGetHandler);
-  app.delete('/claude-code/mcp', validateApiKeyHeader, mcpDeleteHandler);
+  app.get('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpGetHandler);
+  app.delete('/claude-code/mcp', validateApiKeyHeader, rateLimiter, mcpDeleteHandler);
 
   // Serve frontend static files in production
   if (process.env.NODE_ENV === 'production') {
