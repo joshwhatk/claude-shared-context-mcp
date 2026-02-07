@@ -15,6 +15,10 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 COPY frontend/ ./frontend/
 
+# Vite inlines this public key into the frontend bundle at build time
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+
 # Build backend and frontend
 RUN npm run build
 
