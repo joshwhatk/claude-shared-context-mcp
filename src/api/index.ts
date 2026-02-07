@@ -15,6 +15,23 @@ const router = Router();
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Periodic cleanup of expired rate limit entries
+const apiRateLimitCleanupInterval = setInterval(() => {
+  const now = Date.now();
+  let purged = 0;
+  for (const [key, data] of rateLimitMap) {
+    if (now > data.resetTime) {
+      rateLimitMap.delete(key);
+      purged++;
+    }
+  }
+  if (purged > 0 && process.env.LOG_LEVEL === 'debug') {
+    console.log(`[ratelimit] Purged ${purged} expired entries from API rate limit map`);
+  }
+}, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+apiRateLimitCleanupInterval.unref(); // Don't keep process alive for cleanup
 
 /**
  * Authentication middleware for REST API using Clerk JWT

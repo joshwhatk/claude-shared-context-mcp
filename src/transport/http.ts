@@ -41,6 +41,23 @@ const RATE_LIMIT_MAX_REQUESTS = 100;
 
 // Simple in-memory rate limiter
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Periodic cleanup of expired rate limit entries
+const rateLimitCleanupInterval = setInterval(() => {
+  const now = Date.now();
+  let purged = 0;
+  for (const [key, data] of rateLimitMap) {
+    if (now > data.resetTime) {
+      rateLimitMap.delete(key);
+      purged++;
+    }
+  }
+  if (purged > 0 && process.env.LOG_LEVEL === 'debug') {
+    console.log(`[ratelimit] Purged ${purged} expired entries from transport rate limit map`);
+  }
+}, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+rateLimitCleanupInterval.unref(); // Don't keep process alive for cleanup
 
 // Session storage for MCP transports (API key path)
 const transports: Map<string, StreamableHTTPServerTransport> = new Map();
@@ -497,4 +514,7 @@ export function cleanupSessions(): void {
   }
   // Clear all session contexts
   clearAllSessionContexts();
+
+  // Stop rate limit cleanup interval
+  clearInterval(rateLimitCleanupInterval);
 }
