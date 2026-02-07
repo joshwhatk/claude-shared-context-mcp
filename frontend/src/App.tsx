@@ -12,6 +12,7 @@ import { ViewPage } from './pages/ViewPage';
 import { EditPage } from './pages/EditPage';
 import { AdminPage } from './pages/AdminPage';
 import { KeysPage } from './pages/KeysPage';
+import { SetupPage } from './pages/SetupPage';
 
 /**
  * Protected route wrapper - requires Clerk sign-in
@@ -128,6 +129,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <EditPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/setup"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <SetupPage />
             </Layout>
           </ProtectedRoute>
         }

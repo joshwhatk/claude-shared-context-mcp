@@ -7,6 +7,7 @@ import { usePostHog } from 'posthog-js/react';
 import { api } from '../api/client';
 import type { AdminApiKey } from '../api/client';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { CliSetupInstructions } from '../components/SetupInstructions';
 
 // Reuse Modal and ConfirmDialog patterns from AdminPage
 
@@ -96,52 +97,8 @@ function ConfirmDialog({
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: select text in a temporary textarea
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
-    >
-      {copied ? 'Copied!' : 'Copy'}
-    </button>
-  );
-}
-
-function SetupInstructions() {
+function CliSetupAccordion() {
   const [isOpen, setIsOpen] = useState(true);
-  const hostname = window.location.origin;
-
-  const cliJson = `{
-  "Shared_Context": {
-    "type": "http",
-    "url": "${hostname}/claude-code/mcp",
-    "headers": {
-      "Authorization": "Bearer <your-api-key>"
-    }
-  }
-}`;
-
-  const cliCommand = `claude mcp add --transport http Shared_Context ${hostname}/claude-code/mcp --header "Authorization: Bearer <your-api-key>"`;
 
   return (
     <div className="mt-8 bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -161,48 +118,14 @@ function SetupInstructions() {
       </button>
 
       {isOpen && (
-        <div className="px-6 pb-6 space-y-6 border-t border-gray-100">
-          {/* Claude Code CLI */}
-          <div className="pt-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Claude Code CLI</h3>
-            <p className="text-sm text-gray-600 mb-3">
-              Add to <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">~/.claude.json</code> under{' '}
-              <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">"mcpServers"</code>:
-            </p>
-            <div className="relative">
-              <pre className="p-4 bg-gray-900 text-gray-100 rounded-md text-sm font-mono overflow-x-auto">{cliJson}</pre>
-              <div className="absolute top-2 right-2">
-                <CopyButton text={cliJson} />
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 mt-3 mb-2">Or run:</p>
-            <div className="relative">
-              <pre className="p-4 bg-gray-900 text-gray-100 rounded-md text-sm font-mono overflow-x-auto whitespace-pre-wrap break-all">{cliCommand}</pre>
-              <div className="absolute top-2 right-2">
-                <CopyButton text={cliCommand} />
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-gray-500">
-              Replace <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">&lt;your-api-key&gt;</code> with an API key created above.
-            </p>
-          </div>
-
-          {/* Claude.ai Web */}
-          <div className="pt-2">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Claude.ai Web (Projects)</h3>
-            <ol className="text-sm text-gray-600 space-y-1.5 list-decimal list-inside">
-              <li>Go to Claude.ai &rarr; Settings &rarr; Connectors &rarr; Add custom connector</li>
-              <li>
-                URL: <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">{hostname}/mcp</code>
-                <CopyButton text={`${hostname}/mcp`} />
-              </li>
-              <li>Authorize via Clerk OAuth when prompted</li>
-              <li>Tools will be available in conversations</li>
-            </ol>
-            <p className="mt-2 text-xs text-gray-500">
-              No API key needed — Claude.ai uses OAuth to authenticate directly.
-            </p>
-          </div>
+        <div className="px-6 pb-6 border-t border-gray-100 pt-4">
+          <CliSetupInstructions
+            apiKeyHint={
+              <>
+                Replace <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">&lt;your-api-key&gt;</code> with an API key created above.
+              </>
+            }
+          />
         </div>
       )}
     </div>
@@ -435,7 +358,7 @@ export function KeysPage() {
       )}
 
       {/* Setup instructions */}
-      <SetupInstructions />
+      <CliSetupAccordion />
 
       {/* Revoke confirmation dialog */}
       <ConfirmDialog
