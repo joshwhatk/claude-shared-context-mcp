@@ -4,7 +4,9 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { listApiKeysForUser, createApiKey, revokeApiKeyByName } from '../db/queries.js';
+import { listApiKeysForUser, createApiKey, revokeApiKeyByName, countUserApiKeys } from '../db/queries.js';
+
+const MAX_API_KEYS_PER_USER = 10;
 
 const router = Router();
 
@@ -66,6 +68,17 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         success: false,
         error: 'name must contain only alphanumeric characters, dashes, and underscores',
         code: 'INVALID_INPUT',
+      });
+      return;
+    }
+
+    // Enforce API key count limit
+    const keyCount = await countUserApiKeys(req.authenticatedUserId!);
+    if (keyCount >= MAX_API_KEYS_PER_USER) {
+      res.status(400).json({
+        success: false,
+        error: `Maximum of ${MAX_API_KEYS_PER_USER} API keys per user reached`,
+        code: 'LIMIT_EXCEEDED',
       });
       return;
     }

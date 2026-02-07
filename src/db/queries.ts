@@ -209,6 +209,17 @@ export async function listUserApiKeys(userId: string): Promise<Omit<ApiKey, 'key
 }
 
 /**
+ * Count the number of API keys for a user
+ */
+export async function countUserApiKeys(userId: string): Promise<number> {
+  const result = await query<{ count: string }>(
+    'SELECT COUNT(*) as count FROM api_keys WHERE user_id = $1',
+    [userId]
+  );
+  return parseInt(result.rows[0].count, 10);
+}
+
+/**
  * Delete an API key by hash
  */
 export async function deleteApiKey(keyHash: string): Promise<boolean> {

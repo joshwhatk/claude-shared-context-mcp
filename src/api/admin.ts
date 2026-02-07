@@ -13,7 +13,10 @@ import {
   revokeApiKeyByName,
   userExists,
   logAdminAction,
+  countUserApiKeys,
 } from '../db/queries.js';
+
+const MAX_API_KEYS_PER_USER = 10;
 
 const router = Router();
 
@@ -263,6 +266,17 @@ router.post('/users/:userId/keys', async (req: Request, res: Response): Promise<
         success: false,
         error: 'User not found',
         code: 'NOT_FOUND',
+      });
+      return;
+    }
+
+    // Enforce API key count limit
+    const keyCount = await countUserApiKeys(userId);
+    if (keyCount >= MAX_API_KEYS_PER_USER) {
+      res.status(400).json({
+        success: false,
+        error: `Maximum of ${MAX_API_KEYS_PER_USER} API keys per user reached`,
+        code: 'LIMIT_EXCEEDED',
       });
       return;
     }
