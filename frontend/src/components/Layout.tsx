@@ -25,7 +25,7 @@ export function Layout({ children }: LayoutProps) {
               to="/"
               className="text-lg font-semibold text-gray-900 hover:text-gray-700 transition-colors"
             >
-              Shared Context
+              Shared Context MCP
             </Link>
 
             {/* Navigation and user menu */}

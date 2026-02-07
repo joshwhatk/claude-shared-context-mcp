@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
 import type { AdminApiKey } from '../api/client';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 // Reuse Modal and ConfirmDialog patterns from AdminPage
 
@@ -208,6 +209,7 @@ function SetupInstructions() {
 }
 
 export function KeysPage() {
+  usePageTitle('API Keys');
   const [keys, setKeys] = useState<AdminApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

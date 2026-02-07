@@ -8,6 +8,7 @@ import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import type { MarkdownEditorRef } from '../components/MarkdownEditor';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 // Key validation pattern (must match backend)
 const KEY_PATTERN = /^[a-zA-Z0-9_\-\.]+$/;
@@ -32,6 +33,7 @@ export function EditPage() {
   const editorRef = useRef<MarkdownEditorRef>(null);
 
   const isNew = !existingKey;
+  usePageTitle(isNew ? 'New Item' : existingKey ? `Edit ${existingKey}` : undefined);
 
   const [key, setKey] = useState(existingKey || '');
   const [item, setItem] = useState<ContextEntry | null>(null);

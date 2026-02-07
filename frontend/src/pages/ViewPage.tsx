@@ -7,11 +7,13 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ContentRenderer } from '../components/ContentRenderer';
 import { api } from '../api/client';
 import type { ContextEntry } from '../api/client';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function ViewPage() {
   const { key } = useParams<{ key: string }>();
   const navigate = useNavigate();
   const [item, setItem] = useState<ContextEntry | null>(null);
+  usePageTitle(key);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);

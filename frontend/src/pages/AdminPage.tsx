@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
 import type { AdminUser, AdminApiKey } from '../api/client';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 // Modal component for overlays
 function Modal({
@@ -495,6 +496,7 @@ function ApiKeysModal({
 }
 
 export function AdminPage() {
+  usePageTitle('Admin');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

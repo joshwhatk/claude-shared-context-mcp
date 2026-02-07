@@ -3,15 +3,18 @@
  */
 
 import { SignIn } from '@clerk/clerk-react';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function LoginPage() {
+  usePageTitle('Sign In');
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-semibold text-gray-900">
-            Shared Context
+            Shared Context MCP
           </h1>
           <p className="mt-2 text-sm text-gray-600">
             Sign in to access your shared context
