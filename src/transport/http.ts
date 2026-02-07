@@ -384,11 +384,11 @@ function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (origin) {
-    // For development/testing, allow any origin but log it
+  } else if (origin && process.env.NODE_ENV !== 'production') {
+    // Allow any origin in development only
     res.setHeader('Access-Control-Allow-Origin', origin);
     if (process.env.LOG_LEVEL === 'debug') {
-      console.log('[cors] Allowing non-Claude origin:', origin);
+      console.log('[cors] Allowing non-Claude origin (dev):', origin);
     }
   }
 
