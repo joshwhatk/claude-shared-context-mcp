@@ -230,6 +230,30 @@ export async function runMigrations(): Promise<void> {
       `);
       console.log('[migrations] users.clerk_id index ready');
 
+      // ============================================
+      // Waitlist migrations
+      // ============================================
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS waitlist (
+          id SERIAL PRIMARY KEY,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          preferred_login TEXT NOT NULL,
+          agreed_to_contact BOOLEAN NOT NULL DEFAULT true,
+          agreed_to_terms BOOLEAN NOT NULL DEFAULT true,
+          consent_text TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `);
+      console.log('[migrations] waitlist table ready');
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(email)
+      `);
+      console.log('[migrations] waitlist email index ready');
+
       await client.query('COMMIT');
       console.log('[migrations] All migrations completed successfully');
     } catch (err) {

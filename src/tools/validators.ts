@@ -161,6 +161,62 @@ export function validateEmail(email: string): ValidationResult {
   return { valid: true };
 }
 
+// Name constraints (for waitlist)
+const MAX_NAME_LENGTH = 100;
+const NAME_PATTERN = /^[a-zA-ZÀ-ÖØ-öø-ÿ\s\-']+$/;
+
+// Valid preferred login providers
+const VALID_PREFERRED_LOGINS = ['google', 'github', 'microsoft', 'apple'] as const;
+
+/**
+ * Validate a name (first or last) for waitlist
+ * - Must be non-empty
+ * - Maximum 100 characters
+ * - Letters, spaces, hyphens, apostrophes
+ */
+export function validateName(name: string): ValidationResult {
+  if (!name || typeof name !== 'string') {
+    return { valid: false, error: 'Name is required and must be a string' };
+  }
+
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    return { valid: false, error: 'Name cannot be empty' };
+  }
+
+  if (trimmed.length > MAX_NAME_LENGTH) {
+    return { valid: false, error: `Name exceeds maximum length of ${MAX_NAME_LENGTH} characters` };
+  }
+
+  if (!NAME_PATTERN.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'Name must contain only letters, spaces, hyphens, or apostrophes',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate preferred login provider for waitlist
+ * Must be one of: google, github, microsoft, apple
+ */
+export function validatePreferredLogin(login: string): ValidationResult {
+  if (!login || typeof login !== 'string') {
+    return { valid: false, error: 'Preferred login is required and must be a string' };
+  }
+
+  if (!(VALID_PREFERRED_LOGINS as readonly string[]).includes(login)) {
+    return {
+      valid: false,
+      error: `Preferred login must be one of: ${VALID_PREFERRED_LOGINS.join(', ')}`,
+    };
+  }
+
+  return { valid: true };
+}
+
 /**
  * Validate an API key name
  * - Must be non-empty string

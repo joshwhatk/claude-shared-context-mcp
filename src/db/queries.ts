@@ -722,6 +722,44 @@ export async function userExists(userId: string): Promise<boolean> {
   return result.rows[0]?.exists ?? false;
 }
 
+// ============================================
+// Waitlist Functions
+// ============================================
+
+export interface WaitlistEntry {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  preferred_login: string;
+  agreed_to_contact: boolean;
+  agreed_to_terms: boolean;
+  consent_text: string;
+  created_at: Date;
+}
+
+/**
+ * Create a waitlist entry
+ * Uses ON CONFLICT (email) DO NOTHING to handle duplicates gracefully
+ * @returns The created entry, or null if email already exists
+ */
+export async function createWaitlistEntry(
+  firstName: string,
+  lastName: string,
+  email: string,
+  preferredLogin: string,
+  consentText: string
+): Promise<WaitlistEntry | null> {
+  const result = await query<WaitlistEntry>(
+    `INSERT INTO waitlist (first_name, last_name, email, preferred_login, consent_text, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (email) DO NOTHING
+     RETURNING *`,
+    [firstName, lastName, email, preferredLogin, consentText]
+  );
+  return result.rows[0] || null;
+}
+
 /**
  * List API keys for a user with their names (admin view)
  */
