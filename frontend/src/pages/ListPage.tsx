@@ -121,7 +121,7 @@ export function ListPage() {
 
           {/* New item button */}
           <Link
-            to="/new"
+            to="/app/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md
                      hover:bg-blue-700 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
                      transition-colors whitespace-nowrap"
@@ -175,7 +175,7 @@ export function ListPage() {
           </p>
           <div className="mt-6">
             <Link
-              to="/new"
+              to="/app/new"
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md
                        hover:bg-blue-700 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
@@ -213,7 +213,7 @@ export function ListPage() {
           {filteredItems.map((item) => (
             <Link
               key={item.key}
-              to={`/view/${encodeURIComponent(item.key)}`}
+              to={`/app/view/${encodeURIComponent(item.key)}`}
               className="block bg-white rounded-lg border border-gray-200 p-4
                        hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer
                        focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"

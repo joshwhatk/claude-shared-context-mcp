@@ -13,6 +13,7 @@ import { EditPage } from './pages/EditPage';
 import { AdminPage } from './pages/AdminPage';
 import { KeysPage } from './pages/KeysPage';
 import { SetupPage } from './pages/SetupPage';
+import { MarketingPage } from './pages/MarketingPage';
 
 /**
  * Protected route wrapper - requires Clerk sign-in
@@ -55,14 +56,14 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   return <>{children}</>;
 }
 
 /**
- * Public route wrapper (redirects authenticated users)
+ * Public route wrapper (redirects authenticated users to app)
  */
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useClerkAuth();
@@ -76,7 +77,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (isSignedIn) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   return <>{children}</>;
@@ -85,6 +86,8 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Public marketing page */}
+      <Route path="/" element={<MarketingPage />} />
       <Route
         path="/login"
         element={
@@ -93,8 +96,9 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
+      {/* App routes (protected) */}
       <Route
-        path="/"
+        path="/app"
         element={
           <ProtectedRoute>
             <Layout>
@@ -104,7 +108,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/view/:key"
+        path="/app/view/:key"
         element={
           <ProtectedRoute>
             <Layout>
@@ -114,7 +118,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/edit/:key"
+        path="/app/edit/:key"
         element={
           <ProtectedRoute>
             <Layout>
@@ -124,7 +128,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/new"
+        path="/app/new"
         element={
           <ProtectedRoute>
             <Layout>
@@ -134,7 +138,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/setup"
+        path="/app/setup"
         element={
           <ProtectedRoute>
             <Layout>
@@ -144,7 +148,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/keys"
+        path="/app/keys"
         element={
           <ProtectedRoute>
             <Layout>
@@ -154,7 +158,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/admin"
+        path="/app/admin"
         element={
           <AdminRoute>
             <Layout>
@@ -163,7 +167,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/app" replace />} />
     </Routes>
   );
 }

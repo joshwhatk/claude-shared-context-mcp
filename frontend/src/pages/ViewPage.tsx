@@ -24,7 +24,7 @@ export function ViewPage() {
   // Fetch item on mount
   useEffect(() => {
     if (!key) {
-      navigate('/');
+      navigate('/app');
       return;
     }
 
@@ -51,7 +51,7 @@ export function ViewPage() {
       setIsDeleting(true);
       await api.deleteContext(key);
       posthog?.capture('context_deleted');
-      navigate('/');
+      navigate('/app');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item');
       setShowDeleteModal(false);
@@ -79,7 +79,7 @@ export function ViewPage() {
           {error || 'Item not found'}
         </div>
         <div className="mt-4">
-          <Link to="/" className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded">
+          <Link to="/app" className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded">
             Back to list
           </Link>
         </div>
@@ -93,7 +93,7 @@ export function ViewPage() {
       <div className="flex items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-4 min-w-0">
           <Link
-            to="/"
+            to="/app"
             className="flex-shrink-0 p-2 -ml-2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 rounded"
             title="Back to list"
             aria-label="Back to list"
@@ -119,7 +119,7 @@ export function ViewPage() {
 
         <div className="flex items-center gap-2">
           <Link
-            to={`/edit/${encodeURIComponent(item.key)}`}
+            to={`/app/edit/${encodeURIComponent(item.key)}`}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md
                      hover:bg-gray-50 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
           >

@@ -19,7 +19,7 @@ export function SetupPage() {
           apiKeyHint={
             <>
               Replace <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">&lt;your-api-key&gt;</code> with an API key from the{' '}
-              <Link to="/keys" className="text-blue-600 hover:text-blue-800 underline">API Keys</Link> page.
+              <Link to="/app/keys" className="text-blue-600 hover:text-blue-800 underline">API Keys</Link> page.
             </>
           }
         />
@@ -33,7 +33,7 @@ export function SetupPage() {
           </p>
         </div>
         <Link
-          to="/keys"
+          to="/app/keys"
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         >
           Manage API Keys

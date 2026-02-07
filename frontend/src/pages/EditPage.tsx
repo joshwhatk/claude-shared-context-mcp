@@ -108,7 +108,7 @@ export function EditPage() {
       posthog?.capture(eventName, { key_length: targetKey.length });
 
       // Navigate to view page
-      navigate(`/view/${encodeURIComponent(targetKey)}`);
+      navigate(`/app/view/${encodeURIComponent(targetKey)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save item');
     } finally {
@@ -120,10 +120,10 @@ export function EditPage() {
   const handleCancel = () => {
     if (hasChanges) {
       if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
-        navigate(isNew ? '/' : `/view/${encodeURIComponent(existingKey!)}`);
+        navigate(isNew ? '/app' : `/app/view/${encodeURIComponent(existingKey!)}`);
       }
     } else {
-      navigate(isNew ? '/' : `/view/${encodeURIComponent(existingKey!)}`);
+      navigate(isNew ? '/app' : `/app/view/${encodeURIComponent(existingKey!)}`);
     }
   };
 
@@ -142,7 +142,7 @@ export function EditPage() {
           {error}
         </div>
         <div className="mt-4">
-          <Link to="/" className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded">
+          <Link to="/app" className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded">
             Back to list
           </Link>
         </div>

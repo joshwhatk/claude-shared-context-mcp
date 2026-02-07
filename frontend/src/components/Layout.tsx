@@ -22,7 +22,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between h-16">
             {/* Logo / Title */}
             <Link
-              to="/"
+              to="/app"
               className="text-lg font-semibold text-gray-900 hover:text-gray-700 transition-colors"
             >
               Shared Context MCP
@@ -31,20 +31,20 @@ export function Layout({ children }: LayoutProps) {
             {/* Navigation and user menu */}
             <div className="flex items-center gap-4">
               <Link
-                to="/setup"
+                to="/app/setup"
                 className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Setup
               </Link>
               <Link
-                to="/keys"
+                to="/app/keys"
                 className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 API Keys
               </Link>
               {isAdmin && (
                 <Link
-                  to="/admin"
+                  to="/app/admin"
                   className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   Admin
