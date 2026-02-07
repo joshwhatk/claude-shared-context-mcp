@@ -11,6 +11,7 @@ import {
   useEffect,
 } from 'react';
 import { useAuth as useClerkAuth, useUser } from '@clerk/clerk-react';
+import { usePostHog } from 'posthog-js/react';
 import { api } from '../api/client';
 
 interface AuthState {
@@ -35,6 +36,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const { isSignedIn, isLoaded: isAuthLoaded, getToken } = useClerkAuth();
   const { user: clerkUser, isLoaded: isUserLoaded } = useUser();
+  const posthog = usePostHog();
 
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
@@ -57,6 +59,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     if (!isSignedIn) {
+      posthog?.reset();
       setState({
         isAuthenticated: false,
         isLoading: false,
@@ -71,6 +74,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const fetchUserInfo = async () => {
       try {
         const userInfo = await api.getAuthMe();
+        posthog?.identify(userInfo.userId, {
+          email: clerkUser?.primaryEmailAddress?.emailAddress,
+          is_admin: userInfo.isAdmin,
+        });
         setState({
           isAuthenticated: true,
           isLoading: false,
@@ -80,6 +87,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
           error: null,
         });
       } catch (err) {
+        posthog?.capture('auth_error', {
+          error: err instanceof Error ? err.message : 'Unknown error',
+        });
         console.error('[auth] Failed to fetch user info:', err);
         setState({
           isAuthenticated: false,
@@ -93,7 +103,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     fetchUserInfo();
-  }, [isSignedIn, isAuthLoaded, isUserLoaded, clerkUser]);
+  }, [isSignedIn, isAuthLoaded, isUserLoaded, clerkUser, posthog]);
 
   const clearError = () => {
     setState((prev) => ({ ...prev, error: null }));
